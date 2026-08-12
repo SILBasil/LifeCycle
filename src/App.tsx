@@ -95,7 +95,7 @@ function App() {
     { id: 'Dashboard', label: 'หน้าแรก', icon: Home },
     { id: 'Calendar', label: 'ปฏิทิน', icon: CalendarIcon },
     { id: 'Tasks', label: 'บันทึกงาน', icon: CheckSquare },
-    { id: 'Expenses', label: 'การเงินรายเดือน', icon: DollarSign },
+    { id: 'Expenses', label: 'การเงิน', icon: DollarSign },
     { id: 'Settings', label: 'ตั้งค่า', icon: Settings },
   ];
 

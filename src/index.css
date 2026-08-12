@@ -2,24 +2,35 @@
 
 @import "tailwindcss";
 
+:root {
+  --color-paper: #faf8f5;
+  --color-pencil: #2b2b2b;
+  --color-pencil-muted: #6b6b6b;
+  --shadow-sketch: 3px 4px 0px 0px rgba(43, 43, 43, 0.95);
+  --shadow-sketch-sm: 2px 2px 0px 0px rgba(43, 43, 43, 0.95);
+}
+
+body.dark-mode {
+  --color-paper: #242528;
+  --color-pencil: #f0e9df;
+  --color-pencil-muted: #a0a0a0;
+  --shadow-sketch: 3px 4px 0px 0px rgba(240, 233, 223, 0.95);
+  --shadow-sketch-sm: 2px 2px 0px 0px rgba(240, 233, 223, 0.95);
+}
+
 @theme {
   --font-sans: 'Mali', 'Itim', 'Patrick Hand', system-ui, -apple-system, sans-serif;
   --font-hand: 'Mali', 'Itim', 'Patrick Hand', cursive;
 
-  --color-paper: #faf8f5;
-  --color-paper-dark: #242528;
-  --color-pencil: #2b2b2b;
-  --color-pencil-dark: #f0e9df;
-  --color-pencil-muted: #6b6b6b;
-  --color-pencil-muted-dark: #a0a0a0;
+  --color-paper: var(--color-paper);
+  --color-pencil: var(--color-pencil);
+  --color-pencil-muted: var(--color-pencil-muted);
   
   --color-notebook-blue: #a5d8ff;
   --color-notebook-red: #ffc9c9;
   
-  --shadow-sketch: 3px 4px 0px 0px rgba(43, 43, 43, 0.95);
-  --shadow-sketch-dark: 3px 4px 0px 0px rgba(240, 233, 223, 0.95);
-  --shadow-sketch-sm: 2px 2px 0px 0px rgba(43, 43, 43, 0.95);
-  --shadow-sketch-sm-dark: 2px 2px 0px 0px rgba(240, 233, 223, 0.95);
+  --shadow-sketch: var(--shadow-sketch);
+  --shadow-sketch-sm: var(--shadow-sketch-sm);
 }
 
 /* Base custom styles */
@@ -31,11 +42,6 @@ body {
   padding: 0;
   min-height: 100vh;
   transition: background-color 0.3s ease, color 0.3s ease;
-}
-
-body.dark-mode {
-  background-color: var(--color-paper-dark);
-  color: var(--color-pencil-dark);
 }
 
 /* Notebook Grid Paper Style */
@@ -51,7 +57,6 @@ body.dark-mode .notebook-grid {
   background-image: 
     linear-gradient(to right, rgba(165, 216, 255, 0.05) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(165, 216, 255, 0.05) 1px, transparent 1px);
-  background-color: var(--color-paper-dark);
 }
 
 /* Notebook Lined Paper Style */
@@ -64,7 +69,6 @@ body.dark-mode .notebook-grid {
 
 body.dark-mode .notebook-lined {
   background-image: linear-gradient(rgba(165, 216, 255, 0.08) 1px, transparent 1px);
-  background-color: var(--color-paper-dark);
 }
 
 /* Sketch Border - uneven hand-drawn borders */
@@ -73,26 +77,14 @@ body.dark-mode .notebook-lined {
   border-radius: 255px 15px 225px 15px/15px 225px 15px 255px;
 }
 
-body.dark-mode .sketch-border {
-  border-color: var(--color-pencil-dark);
-}
-
 .sketch-border-sm {
   border: 1.5px solid var(--color-pencil);
   border-radius: 120px 10px 100px 10px/10px 100px 10px 120px;
 }
 
-body.dark-mode .sketch-border-sm {
-  border-color: var(--color-pencil-dark);
-}
-
 .sketch-border-lg {
   border: 3px solid var(--color-pencil);
   border-radius: 20px 300px 30px 320px/310px 25px 340px 20px;
-}
-
-body.dark-mode .sketch-border-lg {
-  border-color: var(--color-pencil-dark);
 }
 
 /* Custom rough divider */
@@ -103,10 +95,6 @@ body.dark-mode .sketch-border-lg {
   margin: 1rem 0;
   border-radius: 5px;
   transform: rotate(-0.5deg);
-}
-
-body.dark-mode .notebook-divider {
-  background-color: var(--color-pencil-dark);
 }
 
 /* Notebook Red Margin Line */

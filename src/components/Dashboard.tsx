@@ -122,22 +122,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ userId, onNavigate }) => {
 
   return (
     <div className="space-y-8 animate-fade-in">
-      {/* Header section with notebook aesthetic */}
-      <div className="p-6 bg-paper sketch-border shadow-sketch transform -rotate-0.5">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+      {/* Header section - plain text on mobile, notebook card on desktop */}
+      <div className="p-2 md:p-6 bg-transparent md:bg-paper md:sketch-border md:shadow-sketch md:transform md:-rotate-0.5 text-left">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <span className="text-sm font-bold text-red-500 font-hand border-b border-dashed border-red-300 pb-0.5">
+            <span className="text-xs md:text-sm font-bold text-red-500 font-hand border-b border-dashed border-red-300 pb-0.5">
               ✏️ หน้าบันทึกของวันนี้
             </span>
-            <h2 className="text-3xl font-extrabold font-hand mt-2 flex items-center gap-2">
+            <h2 className="text-xl md:text-3xl font-extrabold font-hand mt-2 flex items-center gap-2">
               {getTodayDateString()}
             </h2>
           </div>
           <button
             onClick={fetchDashboardData}
-            className="sketch-button bg-amber-50 text-pencil text-sm rounded-md sketch-border-sm shadow-sketch-sm"
+            className="sketch-button bg-amber-50 text-pencil text-xs md:text-sm rounded-md sketch-border-sm shadow-sketch-sm mt-2 md:mt-0"
           >
-            <Sparkles className="w-4 h-4 text-amber-500" />
+            <Sparkles className="w-3.5 h-3.5 md:w-4 md:h-4 text-amber-500" />
             <span className="font-hand">ซิงค์บันทึก</span>
           </button>
         </div>
