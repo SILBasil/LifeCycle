@@ -210,7 +210,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ userId }) => {
             type="month"
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="p-2 bg-stone-50 sketch-border-sm text-sm font-extrabold font-hand focus:outline-none"
+            className="p-2 bg-control sketch-border-sm text-sm font-extrabold font-hand focus:outline-none"
           />
         </div>
       </div>
@@ -292,19 +292,19 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ userId }) => {
             ) : (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                  <div className="p-3 bg-stone-50/50 sketch-border-sm">
+                  <div className="p-3 bg-control/50 sketch-border-sm">
                     <span className="text-xs text-pencil-muted font-hand">รายรับหลักประจำเดือน</span>
                     <p className="text-2xl font-bold font-hand text-emerald-600 mt-1">
                       +{Number(budget?.monthly_income).toLocaleString()} บาท
                     </p>
                   </div>
-                  <div className="p-3 bg-stone-50/50 sketch-border-sm">
+                  <div className="p-3 bg-control/50 sketch-border-sm">
                     <span className="text-xs text-pencil-muted font-hand">ขีดจำกัดค่าใช้จ่ายที่ตั้งเป้าไว้</span>
                     <p className="text-2xl font-bold font-hand text-neutral-800 mt-1">
                       {Number(budget?.budget_limit).toLocaleString()} บาท
                     </p>
                   </div>
-                  <div className="p-3 bg-stone-50/50 sketch-border-sm">
+                  <div className="p-3 bg-control/50 sketch-border-sm">
                     <span className="text-xs text-pencil-muted font-hand">ส่วนต่างรายรับหลังหักรายจ่ายทั้งหมด</span>
                     <p className={`text-2xl font-bold font-hand mt-1 ${remainingIncome >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
                       {remainingIncome.toLocaleString()} บาท
@@ -526,7 +526,7 @@ interface ExpenseItemProps {
 
 const ExpenseItem: React.FC<ExpenseItemProps> = ({ item, onToggle, onDelete }) => {
   return (
-    <div className={`p-3 bg-stone-50/30 hover:bg-stone-50 sketch-border-sm flex items-center justify-between transition-all ${item.is_paid ? 'opacity-60 bg-stone-100/10' : ''}`}>
+    <div className={`p-3 bg-control/30 hover:bg-control sketch-border-sm flex items-center justify-between transition-all ${item.is_paid ? 'opacity-60 bg-stone-100/10' : ''}`}>
       <div className="flex items-center gap-3">
         <button
           onClick={() => onToggle(item.id, item.is_paid)}

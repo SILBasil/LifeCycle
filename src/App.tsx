@@ -119,7 +119,7 @@ function App() {
         </div>
 
         {/* User Card */}
-        <div className="mb-8 p-3 bg-stone-50/50 sketch-border-sm flex items-center gap-3">
+        <div className="mb-8 p-3 bg-control/50 sketch-border-sm flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-neutral-800 text-white flex items-center justify-center font-bold text-sm font-hand">
             <User className="w-4 h-4" />
           </div>
@@ -141,7 +141,7 @@ function App() {
                 className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md font-hand text-left transition-all ${
                   isActive 
                     ? 'sketch-button bg-pencil text-white dark:bg-pencil-dark dark:text-neutral-900 shadow-sketch font-bold scale-[1.02]' 
-                    : 'hover:bg-stone-50/75 dark:hover:bg-neutral-800/40 text-pencil-muted hover:text-pencil font-medium'
+                    : 'hover:bg-control/75 text-pencil-muted hover:text-pencil font-medium'
                 }`}
               >
                 <Icon className={`w-5 h-5 ${isActive ? 'text-amber-300 dark:text-amber-600' : ''}`} />
@@ -168,7 +168,7 @@ function App() {
             <span className="text-lg font-extrabold font-hand">LifeCycle</span>
           </div>
           
-          <div className="text-xs font-hand font-bold bg-stone-50/50 px-2 py-1 sketch-border-sm">
+          <div className="text-xs font-hand font-bold bg-control/50 px-2 py-1 sketch-border-sm">
             👤 {userFullName}
           </div>
         </header>

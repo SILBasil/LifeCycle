@@ -206,8 +206,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ userId }) => {
             <CalendarIcon className="w-6 h-6 text-sky-500" />
             ตารางนัดหมาย & ปฏิทิน
           </h2>
-          <div className="flex items-center gap-2 sketch-border-sm bg-stone-50 p-1">
-            <button onClick={prevMonth} className="p-1 hover:bg-neutral-200 rounded">
+          <div className="flex items-center gap-2 sketch-border-sm bg-control p-1">
+            <button onClick={prevMonth} className="p-1 hover:bg-control/60 rounded">
               <ChevronLeft className="w-5 h-5" />
             </button>
             <span className="font-bold text-lg px-2 font-hand min-w-32 text-center">
@@ -259,7 +259,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ userId }) => {
         </div>
 
         {showAddForm && (
-          <form onSubmit={handleAddEvent} className="bg-stone-50/50 p-4 sketch-border-sm mb-6 space-y-4 text-left">
+          <form onSubmit={handleAddEvent} className="bg-control/50 p-4 sketch-border-sm mb-6 space-y-4 text-left">
             <div className="flex justify-between items-center">
               <h4 className="font-bold text-sm font-hand border-b border-dashed border-pencil pb-0.5">✏️ กรอกรายละเอียดนัดหมาย</h4>
               <button type="button" onClick={() => setShowAddForm(false)} className="p-1 hover:bg-neutral-200 rounded">
@@ -327,7 +327,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ userId }) => {
               const startTime = new Date(event.start_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
               const endTime = new Date(event.end_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
               return (
-                <div key={event.id} className="p-4 bg-stone-50/50 sketch-border-sm flex justify-between items-start hover:bg-stone-50 transition-all text-left">
+                <div key={event.id} className="p-4 bg-control/50 sketch-border-sm flex justify-between items-start hover:bg-control transition-all text-left">
                   <div className="space-y-1">
                     <h4 className="font-bold text-lg font-hand">{event.title}</h4>
                     <p className="text-xs text-pencil-muted font-hand flex items-center gap-1">

@@ -104,7 +104,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ userId, onSignOut })
             <span className="text-sm font-bold font-hand">โหมดการแสดงผล (Theme):</span>
             <button
               onClick={toggleDarkMode}
-              className="sketch-button bg-stone-50 text-xs rounded sketch-border-sm shadow-sketch-sm"
+              className="sketch-button bg-control text-xs rounded sketch-border-sm shadow-sketch-sm"
             >
               {darkMode ? (
                 <>

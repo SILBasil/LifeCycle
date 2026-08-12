@@ -176,7 +176,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userId, onNavigate }) => {
                   const startTime = new Date(event.start_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
                   const endTime = new Date(event.end_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
                   return (
-                    <div key={event.id} className="p-3 bg-stone-50/50 sketch-border-sm flex flex-col gap-1 hover:bg-stone-50 transition-colors">
+                    <div key={event.id} className="p-3 bg-control/50 sketch-border-sm flex flex-col gap-1 hover:bg-control transition-colors">
                       <div className="flex justify-between items-start gap-2">
                         <h4 className="font-bold text-base font-hand text-left">{event.title}</h4>
                         <span className="text-xs font-semibold px-2 py-0.5 bg-sky-50 text-sky-700 sketch-border-sm flex-shrink-0 font-hand">
@@ -220,7 +220,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userId, onNavigate }) => {
             ) : (
               <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
                 {tasks.map((task) => (
-                  <div key={task.id} className="flex items-center gap-3 p-2 bg-stone-50/50 hover:bg-stone-50 sketch-border-sm transition-colors">
+                  <div key={task.id} className="flex items-center gap-3 p-2 bg-control/50 hover:bg-control sketch-border-sm transition-colors">
                     <button
                       onClick={() => handleToggleTask(task.id, task.status)}
                       className={`w-5 h-5 rounded border-2 border-pencil flex-shrink-0 flex items-center justify-center font-bold text-xs font-hand ${task.status === 'doing' ? 'bg-amber-100 text-amber-800' : 'bg-transparent'}`}
@@ -286,15 +286,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ userId, onNavigate }) => {
         ) : (
           <div className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="p-3 bg-stone-50/50 sketch-border-sm">
+              <div className="p-3 bg-control/50 sketch-border-sm">
                 <span className="text-xs text-pencil-muted font-hand">รายรับหลักประจำเดือนนี้</span>
                 <p className="text-2xl font-bold font-hand text-emerald-600 mt-1">+{income.toLocaleString()} บาท</p>
               </div>
-              <div className="p-3 bg-stone-50/50 sketch-border-sm">
+              <div className="p-3 bg-control/50 sketch-border-sm">
                 <span className="text-xs text-pencil-muted font-hand">จ่ายไปแล้วทั้งหมด</span>
                 <p className="text-2xl font-bold font-hand text-rose-600 mt-1">-{totalExpenses.toLocaleString()} บาท</p>
               </div>
-              <div className="p-3 bg-stone-50/50 sketch-border-sm">
+              <div className="p-3 bg-control/50 sketch-border-sm">
                 <span className="text-xs text-pencil-muted font-hand">งบจำกัด / ส่วนต่างเหลือ</span>
                 <p className={`text-2xl font-bold font-hand mt-1 ${remainingBudget >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
                   {remainingBudget.toLocaleString()} บาท

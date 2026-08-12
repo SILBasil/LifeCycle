@@ -148,7 +148,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
 
         {/* Progress Tracker */}
         {tasks.length > 0 && (
-          <div className="mt-6 p-4 bg-stone-50/50 sketch-border-sm">
+          <div className="mt-6 p-4 bg-control/50 sketch-border-sm">
             <div className="flex justify-between items-center text-sm font-hand mb-2">
               <span>ความคืบหน้าการทำงาน ({completedCount} / {tasks.length} งาน)</span>
               <span className="font-bold">{progressPercent}% สำเร็จ</span>
@@ -241,7 +241,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
       {/* Filters Area */}
       <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-paper sketch-border shadow-sketch transform rotate-0.5">
         {/* Status Filters */}
-        <div className="flex items-center gap-1 bg-stone-50 p-1 sketch-border-sm">
+        <div className="flex items-center gap-1 bg-control p-1 sketch-border-sm">
           {[
             { id: 'all', label: 'ทั้งหมด' },
             { id: 'todo', label: 'ยังไม่ทำ' },
@@ -266,7 +266,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
           <select
             value={filterProject}
             onChange={(e) => setFilterProject(e.target.value)}
-            className="p-1 text-xs font-bold font-hand bg-stone-50 sketch-border-sm focus:outline-none"
+            className="p-1 text-xs font-bold font-hand bg-control sketch-border-sm focus:outline-none"
           >
             <option value="all">📁 โปรเจกต์ทั้งหมด</option>
             {projects.map((proj, i) => (
@@ -296,7 +296,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
               <div
                 key={task.id}
                 className={`bg-paper p-4 sketch-border shadow-sketch transform hover:translate-x-1 transition-all flex items-start gap-4 text-left ${
-                  isDone ? 'opacity-60 bg-stone-50/50' : ''
+                  isDone ? 'opacity-60 bg-control/50' : ''
                 }`}
               >
                 {/* Hand-drawn checkbox */}
