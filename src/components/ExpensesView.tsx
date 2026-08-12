@@ -196,12 +196,12 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ userId }) => {
   return (
     <div className="space-y-8 animate-fade-in">
       {/* Month Selector */}
-      <div className="bg-paper p-6 sketch-border shadow-sketch transform -rotate-0.5 flex flex-col sm:flex-row justify-between items-center gap-4">
+      <div className="bg-paper p-6 sketch-border shadow-sketch transform -rotate-0.5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <span className="text-sm font-bold text-red-500 font-hand border-b border-dashed border-red-300 pb-0.5">
             📊 ประจำรอบเดือน
           </span>
-          <h2 className="text-2xl font-extrabold font-hand mt-2">
+          <h2 className="text-xl md:text-2xl font-extrabold font-hand mt-2">
             สรุปและวางแผนงบการเงิน
           </h2>
         </div>

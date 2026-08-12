@@ -131,7 +131,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
       {/* Title & Stats Card */}
       <div className="bg-paper p-6 sketch-border shadow-sketch transform -rotate-0.5">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <h2 className="text-2xl font-extrabold font-hand flex items-center gap-2">
+          <h2 className="text-lg md:text-2xl font-extrabold font-hand flex items-center gap-2">
             <ListTodo className="w-6 h-6 text-emerald-500" />
             รายการงานที่ต้องจัดการ (Tasks & Work)
           </h2>

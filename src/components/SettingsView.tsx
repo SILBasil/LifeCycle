@@ -61,7 +61,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ userId, onSignOut })
     <div className="space-y-8 animate-fade-in text-left">
       {/* Title */}
       <div className="bg-paper p-6 sketch-border shadow-sketch transform -rotate-0.5">
-        <h2 className="text-2xl font-extrabold font-hand flex items-center gap-2">
+        <h2 className="text-xl md:text-2xl font-extrabold font-hand flex items-center gap-2">
           <BookOpen className="w-6 h-6 text-neutral-800 dark:text-neutral-200" />
           การตั้งค่า & โปรไฟล์ส่วนตัว
         </h2>

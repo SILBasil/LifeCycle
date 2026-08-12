@@ -157,8 +157,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ userId, onNavigate }) => {
         <div className="bg-paper p-6 sketch-border shadow-sketch flex flex-col justify-between transform rotate-0.5">
           <div>
             <div className="flex justify-between items-center mb-4 pb-2 border-b border-dashed border-neutral-300">
-              <h3 className="text-xl font-extrabold font-hand flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-sky-500" />
+              <h3 className="text-base md:text-xl font-extrabold font-hand flex items-center gap-2">
+                <Calendar className="w-4 h-4 md:w-5 md:h-5 text-sky-500" />
                 ตารางนัดหมายวันนี้
               </h3>
               <span className="text-xs bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full font-hand">
@@ -204,8 +204,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ userId, onNavigate }) => {
         <div className="bg-paper p-6 sketch-border shadow-sketch flex flex-col justify-between transform -rotate-0.5">
           <div>
             <div className="flex justify-between items-center mb-4 pb-2 border-b border-dashed border-neutral-300">
-              <h3 className="text-xl font-extrabold font-hand flex items-center gap-2">
-                <CheckSquare className="w-5 h-5 text-emerald-500" />
+              <h3 className="text-base md:text-xl font-extrabold font-hand flex items-center gap-2">
+                <CheckSquare className="w-4 h-4 md:w-5 md:h-5 text-emerald-500" />
                 งานสำคัญที่ต้องจัดการ
               </h3>
               <span className="text-xs bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-hand">

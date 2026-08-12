@@ -162,7 +162,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ userId }) => {
         <button
           key={`day-${day}`}
           onClick={() => handleSelectDay(day)}
-          className={`p-2 min-h-16 flex flex-col justify-between hover:bg-neutral-50 transition-colors relative text-left border border-neutral-200 rounded-md ${
+          className={`p-1 md:p-2 min-h-11 md:min-h-16 flex flex-col justify-between hover:bg-neutral-50/20 transition-colors relative text-left border border-neutral-200 rounded-md ${
             isSelected ? 'sketch-border bg-amber-50/50' : 'bg-transparent'
           }`}
         >
@@ -175,7 +175,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ userId }) => {
             )}
           </div>
           {dayEvents.length > 0 && (
-            <span className="text-[10px] truncate max-w-full text-pencil-muted font-hand block mt-1">
+            <span className="text-[10px] truncate max-w-full text-pencil-muted font-hand hidden md:block mt-1">
               ✏️ {dayEvents.length} กิจกรรม
             </span>
           )}
@@ -201,8 +201,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ userId }) => {
   return (
     <div className="space-y-8 animate-fade-in">
       <div className="bg-paper p-6 sketch-border shadow-sketch transform -rotate-0.5">
-        <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-extrabold font-hand flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <h2 className="text-xl md:text-2xl font-extrabold font-hand flex items-center gap-2">
             <CalendarIcon className="w-6 h-6 text-sky-500" />
             ตารางนัดหมาย & ปฏิทิน
           </h2>
