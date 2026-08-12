@@ -36,6 +36,16 @@ body.dark-mode {
   --shadow-sketch-sm: var(--shadow-sketch-sm);
 }
 
+html {
+  font-size: 14px;
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 16px;
+  }
+}
+
 /* Base custom styles */
 body {
   background-color: var(--color-paper);

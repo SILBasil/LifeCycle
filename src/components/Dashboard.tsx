@@ -129,7 +129,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userId, onNavigate }) => {
             <span className="text-xs md:text-sm font-bold text-red-500 font-hand border-b border-dashed border-red-300 pb-0.5">
               ✏️ หน้าบันทึกของวันนี้
             </span>
-            <h2 className="text-xl md:text-3xl font-extrabold font-hand mt-2 flex items-center gap-2">
+            <h2 className="text-lg md:text-2xl font-extrabold font-hand mt-2 flex items-center gap-2">
               {getTodayDateString()}
             </h2>
           </div>
@@ -157,7 +157,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userId, onNavigate }) => {
         <div className="bg-paper p-6 sketch-border shadow-sketch flex flex-col justify-between transform rotate-0.5">
           <div>
             <div className="flex justify-between items-center mb-4 pb-2 border-b border-dashed border-neutral-300">
-              <h3 className="text-base md:text-xl font-extrabold font-hand flex items-center gap-2">
+              <h3 className="text-sm md:text-lg font-extrabold font-hand flex items-center gap-2">
                 <Calendar className="w-4 h-4 md:w-5 md:h-5 text-sky-500" />
                 ตารางนัดหมายวันนี้
               </h3>
@@ -204,7 +204,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userId, onNavigate }) => {
         <div className="bg-paper p-6 sketch-border shadow-sketch flex flex-col justify-between transform -rotate-0.5">
           <div>
             <div className="flex justify-between items-center mb-4 pb-2 border-b border-dashed border-neutral-300">
-              <h3 className="text-base md:text-xl font-extrabold font-hand flex items-center gap-2">
+              <h3 className="text-sm md:text-lg font-extrabold font-hand flex items-center gap-2">
                 <CheckSquare className="w-4 h-4 md:w-5 md:h-5 text-emerald-500" />
                 งานสำคัญที่ต้องจัดการ
               </h3>
