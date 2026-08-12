@@ -1,0 +1,191 @@
+@import url('https://fonts.googleapis.com/css2?family=Itim&family=Mali:ital,wght@0,200;0,300;0,400;0,500;0,600;0,700;1,200;1,300;1,400;1,500;1,600;1,700&family=Patrick+Hand&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Mali', 'Itim', 'Patrick Hand', system-ui, -apple-system, sans-serif;
+  --font-hand: 'Mali', 'Itim', 'Patrick Hand', cursive;
+
+  --color-paper: #faf8f5;
+  --color-paper-dark: #242528;
+  --color-pencil: #2b2b2b;
+  --color-pencil-dark: #f0e9df;
+  --color-pencil-muted: #6b6b6b;
+  --color-pencil-muted-dark: #a0a0a0;
+  
+  --color-notebook-blue: #a5d8ff;
+  --color-notebook-red: #ffc9c9;
+  
+  --shadow-sketch: 3px 4px 0px 0px rgba(43, 43, 43, 0.95);
+  --shadow-sketch-dark: 3px 4px 0px 0px rgba(240, 233, 223, 0.95);
+  --shadow-sketch-sm: 2px 2px 0px 0px rgba(43, 43, 43, 0.95);
+  --shadow-sketch-sm-dark: 2px 2px 0px 0px rgba(240, 233, 223, 0.95);
+}
+
+/* Base custom styles */
+body {
+  background-color: var(--color-paper);
+  color: var(--color-pencil);
+  font-family: var(--font-sans);
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+body.dark-mode {
+  background-color: var(--color-paper-dark);
+  color: var(--color-pencil-dark);
+}
+
+/* Notebook Grid Paper Style */
+.notebook-grid {
+  background-size: 24px 24px;
+  background-image: 
+    linear-gradient(to right, rgba(165, 216, 255, 0.15) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(165, 216, 255, 0.15) 1px, transparent 1px);
+  background-color: var(--color-paper);
+}
+
+body.dark-mode .notebook-grid {
+  background-image: 
+    linear-gradient(to right, rgba(165, 216, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(165, 216, 255, 0.05) 1px, transparent 1px);
+  background-color: var(--color-paper-dark);
+}
+
+/* Notebook Lined Paper Style */
+.notebook-lined {
+  background-size: 100% 28px;
+  background-image: linear-gradient(rgba(165, 216, 255, 0.25) 1px, transparent 1px);
+  line-height: 28px;
+  background-color: var(--color-paper);
+}
+
+body.dark-mode .notebook-lined {
+  background-image: linear-gradient(rgba(165, 216, 255, 0.08) 1px, transparent 1px);
+  background-color: var(--color-paper-dark);
+}
+
+/* Sketch Border - uneven hand-drawn borders */
+.sketch-border {
+  border: 2px solid var(--color-pencil);
+  border-radius: 255px 15px 225px 15px/15px 225px 15px 255px;
+}
+
+body.dark-mode .sketch-border {
+  border-color: var(--color-pencil-dark);
+}
+
+.sketch-border-sm {
+  border: 1.5px solid var(--color-pencil);
+  border-radius: 120px 10px 100px 10px/10px 100px 10px 120px;
+}
+
+body.dark-mode .sketch-border-sm {
+  border-color: var(--color-pencil-dark);
+}
+
+.sketch-border-lg {
+  border: 3px solid var(--color-pencil);
+  border-radius: 20px 300px 30px 320px/310px 25px 340px 20px;
+}
+
+body.dark-mode .sketch-border-lg {
+  border-color: var(--color-pencil-dark);
+}
+
+/* Custom rough divider */
+.notebook-divider {
+  height: 2px;
+  background-color: var(--color-pencil);
+  opacity: 0.8;
+  margin: 1rem 0;
+  border-radius: 5px;
+  transform: rotate(-0.5deg);
+}
+
+body.dark-mode .notebook-divider {
+  background-color: var(--color-pencil-dark);
+}
+
+/* Notebook Red Margin Line */
+.notebook-margin-line {
+  border-left: 2px double var(--color-notebook-red);
+  opacity: 0.6;
+  padding-left: 1.5rem;
+}
+
+/* Scribble text decorations */
+.highlight-scribble {
+  position: relative;
+}
+
+.highlight-scribble::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  width: 100%;
+  height: 4px;
+  background-color: var(--color-notebook-red);
+  opacity: 0.4;
+  z-index: -1;
+  border-radius: 2px;
+  transform: rotate(-1deg);
+}
+
+/* Hand-drawn Scrollbar */
+::-webkit-scrollbar {
+  width: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-paper);
+  border-left: 2px solid var(--color-pencil);
+}
+
+body.dark-mode ::-webkit-scrollbar-track {
+  background: var(--color-paper-dark);
+  border-left-color: var(--color-pencil-dark);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-pencil);
+  border: 2px solid var(--color-paper);
+  border-radius: 10px;
+}
+
+body.dark-mode ::-webkit-scrollbar-thumb {
+  background: var(--color-pencil-dark);
+  border-color: var(--color-paper-dark);
+}
+
+/* Custom interactive buttons and items */
+.sketch-button {
+  background: transparent;
+  color: inherit;
+  font-weight: bold;
+  padding: 0.5rem 1.25rem;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sketch-button:active {
+  transform: translate(2px, 2px);
+  box-shadow: none !important;
+}
+
+/* Hand drawn animation */
+@keyframes scribble {
+  0% { transform: skewX(-1deg) skewY(-1deg); }
+  50% { transform: skewX(1deg) skewY(1deg); }
+  100% { transform: skewX(-1deg) skewY(-1deg); }
+}
+
+.animate-scribble {
+  animation: scribble 2s infinite ease-in-out;
+}
