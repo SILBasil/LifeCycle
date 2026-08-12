@@ -252,7 +252,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
               key={status.id}
               onClick={() => setFilterStatus(status.id)}
               className={`px-3 py-1 text-xs font-bold font-hand rounded transition-colors ${
-                filterStatus === status.id ? 'bg-pencil text-white' : 'hover:bg-neutral-200'
+                filterStatus === status.id ? 'bg-pencil text-paper' : 'hover:bg-control/50'
               }`}
             >
               {status.label}

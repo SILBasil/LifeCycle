@@ -100,7 +100,7 @@ function App() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-paper notebook-grid transition-colors duration-300">
+    <div className="h-screen flex flex-col md:flex-row bg-paper notebook-grid transition-colors duration-300 overflow-hidden">
       
       {/* Sidebar for Desktop */}
       <aside className="hidden md:flex flex-col w-64 border-r-2 border-pencil dark:border-pencil-dark p-6 bg-paper relative">
@@ -159,7 +159,7 @@ function App() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-grow flex flex-col min-h-screen">
+      <main className="flex-grow flex flex-col h-full overflow-y-auto">
         
         {/* Top Header for Mobile */}
         <header className="md:hidden flex items-center justify-between p-4 border-b-2 border-pencil dark:border-pencil-dark bg-paper">
