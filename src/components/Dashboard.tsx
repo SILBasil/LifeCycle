@@ -152,7 +152,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userId, onNavigate }) => {
 
       {/* Grid container for dashboard items */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        
+
         {/* Today's Schedule Card */}
         <div className="bg-paper p-6 sketch-border shadow-sketch flex flex-col justify-between transform rotate-0.5">
           <div>
@@ -230,10 +230,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ userId, onNavigate }) => {
                     <div className="flex-grow text-left">
                       <span className="font-hand text-sm font-bold block">{task.title}</span>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className={`text-[10px] px-1.5 rounded sketch-border-sm font-hand ${
-                          task.priority === 'high' ? 'bg-red-100 text-red-800' :
+                        <span className={`text-[10px] px-1.5 rounded sketch-border-sm font-hand ${task.priority === 'high' ? 'bg-red-100 text-red-800' :
                           task.priority === 'medium' ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'
-                        }`}>
+                          }`}>
                           {task.priority === 'high' ? 'ด่วน' : task.priority === 'medium' ? 'ปกติ' : 'ต่ำ'}
                         </span>
                         {task.project_name && (
@@ -262,10 +261,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ userId, onNavigate }) => {
       <div className="bg-paper p-6 sketch-border shadow-sketch transform rotate-0.5">
         <div className="flex justify-between items-center mb-6 pb-2 border-b border-dashed border-neutral-300">
           <h3 className="text-xl font-extrabold font-hand flex items-center gap-2">
-            <DollarSign className="w-5 h-5 text-amber-500" />
+            <DollarSign className="w-4 h-4 md:w-5 md:h-5 text-emerald-500" />
             การเงินประจำเดือนนี้
           </h3>
-          <button 
+          <button
             onClick={() => onNavigate('Expenses')}
             className="text-xs font-bold underline hover:text-amber-600 font-hand"
           >
@@ -308,13 +307,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ userId, onNavigate }) => {
                 <span>ความคืบหน้าการใช้งบตามเป้า ({totalExpenses.toLocaleString()} / {budgetLimit.toLocaleString()} บาท)</span>
                 <span className="font-bold">{budgetPercentage.toFixed(0)}%</span>
               </div>
-              
+
               {/* Hand-drawn look container */}
               <div className="w-full h-8 sketch-border-sm bg-neutral-100/50 overflow-hidden p-0.5">
-                <div 
-                  className={`h-full rounded-sm sketch-border-sm transition-all duration-500 ease-out ${
-                    budgetPercentage > 90 ? 'bg-red-400' : budgetPercentage > 75 ? 'bg-amber-400' : 'bg-emerald-400'
-                  }`}
+                <div
+                  className={`h-full rounded-sm sketch-border-sm transition-all duration-500 ease-out ${budgetPercentage > 90 ? 'bg-red-400' : budgetPercentage > 75 ? 'bg-amber-400' : 'bg-emerald-400'
+                    }`}
                   style={{ width: `${budgetPercentage}%` }}
                 >
                   {/* Subtle scribble inside progress */}

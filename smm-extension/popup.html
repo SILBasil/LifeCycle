@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      width: 320px;
+      margin: 0;
+      padding: 16px;
+      background-color: #faf9f6;
+      color: #262626;
+    }
+    h2 {
+      margin-top: 0;
+      margin-bottom: 12px;
+      font-size: 16px;
+      border-bottom: 2px solid #262626;
+      padding-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .card {
+      background: white;
+      border: 2px solid #262626;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+      box-shadow: 3px 3px 0px #262626;
+    }
+    .card-title {
+      font-weight: bold;
+      font-size: 14px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .status {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid #262626;
+      font-weight: bold;
+    }
+    .status.active {
+      background-color: #defedb;
+      color: #1f3520;
+    }
+    .status.empty {
+      background-color: #fdefed;
+      color: #76161b;
+    }
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    button {
+      flex: 1;
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: bold;
+      border: 2px solid #262626;
+      border-radius: 6px;
+      background: white;
+      cursor: pointer;
+      box-shadow: 2px 2px 0px #262626;
+      transition: all 0.1s;
+    }
+    button:hover {
+      background: #f0f0f0;
+    }
+    button:active {
+      transform: translate(1px, 1px);
+      box-shadow: 1px 1px 0px #262626;
+    }
+    button.primary {
+      background: #fff8e7;
+    }
+    button.primary:hover {
+      background: #fff3d1;
+    }
+    button.danger {
+      background: #fff0f0;
+      color: #c62330;
+    }
+    button.danger:hover {
+      background: #ffe3e3;
+    }
+    .info-text {
+      font-size: 10px;
+      color: #6a717a;
+      margin-top: 4px;
+      line-height: 1.4;
+    }
+    .footer {
+      font-size: 9px;
+      text-align: center;
+      color: #8e8e8e;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <h2>🤖 SMM Session Manager</h2>
+  
+  <!-- Instagram Card -->
+  <div class="card">
+    <div class="card-title">
+      <span>📸 Instagram Session</span>
+      <span id="ig-status" class="status empty">ไม่มีข้อมูล</span>
+    </div>
+    <div class="info-text">
+      ล็อกอิน IG ในเบราว์เซอร์นี้ไว้แล้วกดปุ่มเพื่อบันทึกเซสชัน
+    </div>
+    <div class="btn-group">
+      <button id="btn-save-ig" class="primary">📥 บันทึกเซสชัน</button>
+      <button id="btn-clear-ig" class="danger">🗑️ ล้างเซสชัน</button>
+    </div>
+  </div>
+
+  <!-- TikTok Card -->
+  <div class="card">
+    <div class="card-title">
+      <span>🎵 TikTok Session</span>
+      <span id="tiktok-status" class="status empty">ไม่มีข้อมูล</span>
+    </div>
+    <div class="info-text">
+      ล็อกอิน TikTok ในเบราว์เซอร์นี้ไว้แล้วกดปุ่มเพื่อบันทึกเซสชัน
+    </div>
+    <div class="btn-group">
+      <button id="btn-save-tiktok" class="primary">📥 บันทึกเซสชัน</button>
+      <button id="btn-clear-tiktok" class="danger">🗑️ ล้างเซสชัน</button>
+    </div>
+  </div>
+
+  <!-- Facebook Card -->
+  <div class="card">
+    <div class="card-title">
+      <span>📘 Facebook Session</span>
+      <span id="fb-status" class="status empty">ไม่มีข้อมูล</span>
+    </div>
+    <div class="info-text">
+      ล็อกอิน Facebook ในเบราว์เซอร์นี้ไว้แล้วกดปุ่มเพื่อบันทึกเซสชัน
+    </div>
+    <div class="btn-group">
+      <button id="btn-save-fb" class="primary">📥 บันทึกเซสชัน</button>
+      <button id="btn-clear-fb" class="danger">🗑️ ล้างเซสชัน</button>
+    </div>
+  </div>
+
+  <div class="footer">
+    LifeCycle Auto-Fetcher Extension v1.0
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

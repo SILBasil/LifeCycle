@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { User, LogOut, Sun, Moon, Info, ShieldAlert, BookOpen } from 'lucide-react';
+import { 
+  User, LogOut, Sun, Moon, Info, ShieldAlert, BookOpen,
+  Briefcase, Plus, Trash2, Tag
+} from 'lucide-react';
 
 interface SettingsViewProps {
   userId: string;
@@ -13,6 +16,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ userId, onSignOut })
   const [darkMode, setDarkMode] = useState(() => {
     return document.body.classList.contains('dark-mode');
   });
+
+  // Channels & Services management states
+  const [channels, setChannels] = useState<any[]>([]);
+  const [channelsLoading, setChannelsLoading] = useState(true);
+  const [selectedChannelId, setSelectedChannelId] = useState<string>('');
+  const [newChannelName, setNewChannelName] = useState('');
+  const [newServiceName, setNewServiceName] = useState('');
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -35,6 +46,40 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ userId, onSignOut })
     fetchProfile();
   }, [userId]);
 
+  const fetchChannels = async () => {
+    try {
+      setChannelsLoading(true);
+      const { data, error } = await supabase
+        .from('freelance_channels')
+        .select('*')
+        .eq('user_id', userId)
+        .order('name', { ascending: true });
+      if (error) throw error;
+      
+      const loadedChannels = data || [];
+      setChannels(loadedChannels);
+      
+      if (loadedChannels.length > 0) {
+        setSelectedChannelId(prev => {
+          if (prev && loadedChannels.some(c => c.id === prev)) {
+            return prev;
+          }
+          return loadedChannels[0].id;
+        });
+      } else {
+        setSelectedChannelId('');
+      }
+    } catch (err) {
+      console.error('Error loading channels in settings:', err);
+    } finally {
+      setChannelsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchChannels();
+  }, [userId]);
+
   const toggleDarkMode = () => {
     const isDark = !darkMode;
     setDarkMode(isDark);
@@ -54,6 +99,110 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ userId, onSignOut })
       onSignOut();
     } catch (err) {
       console.error('Error signing out:', err);
+    }
+  };
+
+  const handleAddChannel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newChannelName.trim()) return;
+    try {
+      setUpdating(true);
+      const { data, error } = await supabase
+        .from('freelance_channels')
+        .insert({
+          user_id: userId,
+          name: newChannelName.trim(),
+          services: ['ig : ฟอล', 'ig : ไลค์', 'tiktok : ตต', 'facebook : ตต', 'อื่นๆ']
+        })
+        .select();
+      if (error) throw error;
+      setNewChannelName('');
+      await fetchChannels();
+      if (data && data.length > 0) {
+        setSelectedChannelId(data[0].id);
+      }
+    } catch (err) {
+      console.error('Error adding channel:', err);
+      alert('เกิดข้อผิดพลาดในการเพิ่มช่องทาง');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleDeleteChannel = async (id: string) => {
+    const channel = channels.find(c => c.id === id);
+    if (!channel) return;
+    if (!window.confirm(`คุณต้องการลบช่องทาง "${channel.name}" ใช่หรือไม่? งานที่ผูกกับช่องทางนี้จะไม่ถูกลบ`)) return;
+    try {
+      setUpdating(true);
+      const { error } = await supabase
+        .from('freelance_channels')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId);
+      if (error) throw error;
+      await fetchChannels();
+    } catch (err) {
+      console.error('Error deleting channel:', err);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleAddService = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedChannelId || !newServiceName.trim()) return;
+    
+    const channel = channels.find(c => c.id === selectedChannelId);
+    if (!channel) return;
+    
+    const currentServices = channel.services || [];
+    if (currentServices.includes(newServiceName.trim())) {
+      alert('บริการนี้มีอยู่แล้วในช่องทางนี้');
+      return;
+    }
+    
+    const updatedServices = [...currentServices, newServiceName.trim()];
+    
+    try {
+      setUpdating(true);
+      const { error } = await supabase
+        .from('freelance_channels')
+        .update({ services: updatedServices })
+        .eq('id', selectedChannelId)
+        .eq('user_id', userId);
+      if (error) throw error;
+      setNewServiceName('');
+      await fetchChannels();
+    } catch (err) {
+      console.error('Error adding service:', err);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleDeleteService = async (serviceIndex: number) => {
+    if (!selectedChannelId) return;
+    
+    const channel = channels.find(c => c.id === selectedChannelId);
+    if (!channel) return;
+    
+    const currentServices = channel.services || [];
+    const updatedServices = currentServices.filter((_: any, idx: number) => idx !== serviceIndex);
+    
+    try {
+      setUpdating(true);
+      const { error } = await supabase
+        .from('freelance_channels')
+        .update({ services: updatedServices })
+        .eq('id', selectedChannelId)
+        .eq('user_id', userId);
+      if (error) throw error;
+      await fetchChannels();
+    } catch (err) {
+      console.error('Error deleting service:', err);
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -149,7 +298,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ userId, onSignOut })
                 🔒 ขั้นตอนปิดรับผู้ใช้ใหม่:
               </span>
               <ol className="list-decimal list-inside space-y-1.5 pl-1 text-xs text-amber-950 leading-relaxed">
-                <li>เข้าไปยังหน้าแดชบอร์ดของ <a href="https://supabase.com" target="_blank" className="underline font-bold">Supabase Console</a></li>
+                <li>เข้าไปยังหน้าแดชบอร์ดของ <a href="https://supabase.com" target="_blank" className="underline font-bold" rel="noreferrer">Supabase Console</a></li>
                 <li>เลือกโปรเจกต์ของคุณชื่อ <span className="font-bold">work_life_cycle</span></li>
                 <li>ไปที่เมนู **Authentication** ด้านซ้ายมือ</li>
                 <li>คลิกเลือกหัวข้อ **Providers** จากแถบเมนูด้านบน</li>
@@ -164,6 +313,139 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ userId, onSignOut })
               <div>
                 เมื่อตั้งค่าแล้ว จะไม่มีใครสามารถสมัครสมาชิกผ่านหน้าจอแอปนี้ได้อีก และข้อมูลของคุณทั้งหมดในฐานข้อมูลจะมีความปลอดภัยสูงสุด มีแต่คุณเท่านั้นที่สามารถ Login เข้ามาจดบันทึกได้ครับ
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Manage Channels and Services Card */}
+        <div className="bg-paper p-6 sketch-border shadow-sketch transform rotate-0.5 space-y-6 md:col-span-2">
+          <h3 className="text-xl font-extrabold font-hand border-b border-dashed border-neutral-300 pb-2 flex items-center gap-2 text-indigo-600">
+            <Briefcase className="w-5 h-5" />
+            จัดการช่องทาง & บริการงานเสริม SMM
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+            {/* Channels Column */}
+            <div className="md:col-span-2 space-y-4 border-r border-dashed border-neutral-300 pr-0 md:pr-6">
+              <h4 className="font-hand font-bold text-sm text-pencil-muted flex items-center gap-1.5">
+                <Tag className="w-4 h-4" /> 1. เลือก / เพิ่มช่องทางรับงาน
+              </h4>
+              
+              {channelsLoading ? (
+                <p className="font-hand text-xs text-pencil-muted">กำลังโหลดช่องทาง...</p>
+              ) : channels.length === 0 ? (
+                <p className="font-hand text-xs text-red-500">ยังไม่มีช่องทางรับงาน</p>
+              ) : (
+                <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
+                  {channels.map(c => {
+                    const isSelected = c.id === selectedChannelId;
+                    return (
+                      <div 
+                        key={c.id} 
+                        onClick={() => setSelectedChannelId(c.id)}
+                        className={`flex items-center justify-between p-2 rounded-md font-hand text-sm cursor-pointer transition-all ${
+                          isSelected 
+                            ? 'bg-pencil text-white font-bold shadow-sketch-sm' 
+                            : 'bg-control/50 hover:bg-control hover:text-pencil'
+                        }`}
+                      >
+                        <span className="truncate">🏷️ {c.name}</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteChannel(c.id);
+                          }}
+                          className={`p-1 hover:text-red-500 transition-colors ${
+                            isSelected ? 'text-neutral-300' : 'text-neutral-400'
+                          }`}
+                          title="ลบช่องทาง"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <form onSubmit={handleAddChannel} className="flex gap-2 pt-2">
+                <input
+                  type="text"
+                  placeholder="เช่น Fastwork, Line"
+                  value={newChannelName}
+                  onChange={(e) => setNewChannelName(e.target.value)}
+                  className="flex-grow p-1.5 bg-transparent border-2 border-pencil rounded-md text-xs font-hand"
+                  disabled={updating}
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={updating}
+                  className="sketch-button bg-pencil text-white text-xs px-3 rounded sketch-border-sm shadow-sketch-sm font-hand"
+                >
+                  <Plus className="w-3.5 h-3.5" /> เพิ่ม
+                </button>
+              </form>
+            </div>
+
+            {/* Services Column */}
+            <div className="md:col-span-3 space-y-4">
+              <h4 className="font-hand font-bold text-sm text-pencil-muted flex items-center gap-1.5">
+                ⚡ 2. ตั้งค่าบริการ SMM ของช่องทาง: {channels.find(c => c.id === selectedChannelId)?.name || '-'}
+              </h4>
+
+              {selectedChannelId ? (
+                <div className="space-y-4">
+                  {/* Services list */}
+                  <div className="flex flex-wrap gap-2 min-h-[100px] p-3 bg-control/30 sketch-border-sm">
+                    {(() => {
+                      const selChan = channels.find(c => c.id === selectedChannelId);
+                      const servicesList = selChan?.services || [];
+                      if (servicesList.length === 0) {
+                        return <p className="font-hand text-xs text-pencil-muted m-auto">ยังไม่มีการเพิ่มประเภทบริการ</p>;
+                      }
+                      return servicesList.map((s: string, idx: number) => (
+                        <span 
+                          key={`${s}-${idx}`}
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-800 text-xs font-bold font-hand sketch-border-sm animate-fade-in"
+                        >
+                          {s}
+                          <button
+                            onClick={() => handleDeleteService(idx)}
+                            className="text-neutral-400 hover:text-red-500 ml-0.5"
+                            title="ลบประเภทบริการนี้"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ));
+                    })()}
+                  </div>
+
+                  <form onSubmit={handleAddService} className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="เช่น ig : ฟอลต่างชาติ, tiktok : ไลค์"
+                      value={newServiceName}
+                      onChange={(e) => setNewServiceName(e.target.value)}
+                      className="flex-grow p-1.5 bg-transparent border-2 border-pencil rounded-md text-xs font-hand"
+                      disabled={updating}
+                      required
+                    />
+                    <button
+                      type="submit"
+                      disabled={updating}
+                      className="sketch-button bg-pencil text-white text-xs px-3 rounded sketch-border-sm shadow-sketch-sm font-hand"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> เพิ่มบริการ
+                    </button>
+                  </form>
+                </div>
+              ) : (
+                <p className="font-hand text-xs text-pencil-muted text-center py-10">
+                  กรุณาเลือกหรือเพิ่มช่องทางรับงานทางด้านซ้ายเพื่อตั้งค่าบริการ SMM
+                </p>
+              )}
             </div>
           </div>
         </div>
