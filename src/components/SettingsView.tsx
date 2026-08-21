@@ -345,7 +345,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ userId, onSignOut })
                 value={webhookUrl}
                 onChange={(e) => setWebhookUrlState(e.target.value)}
                 placeholder="https://script.google.com/macros/s/AKfycb.../exec"
-                className="flex-grow p-2.5 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-emerald-300 border-2 border-pencil rounded-md text-xs font-hand font-bold sketch-border-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="flex-grow p-2.5 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand font-bold sketch-border-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-pencil-muted"
               />
               <button
                 onClick={() => {

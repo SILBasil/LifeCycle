@@ -1710,7 +1710,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                     value={webhookUrlInput}
                     onChange={(e) => setWebhookUrlInput(e.target.value)}
                     placeholder="วาง Webhook URL ที่ได้จาก Google Apps Script..."
-                    className="w-full p-2.5 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-emerald-300 border-2 border-pencil rounded-md text-xs font-hand font-bold sketch-border-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full p-2.5 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand font-bold sketch-border-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-pencil-muted"
                   />
                 </div>
 
@@ -1769,7 +1769,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="🔍 ค้นหาชื่อ IG, TikTok, FB, ชื่อลูกค้า หรือ ID คำสั่งซื้อแชท (เช่น 123456)..."
-                className="w-full pl-9 pr-8 py-2 bg-paper dark:bg-neutral-800 border-2 border-pencil rounded-md text-sm font-hand sketch-border-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                className="w-full pl-9 pr-8 py-2 bg-paper text-pencil border-2 border-pencil rounded-md text-sm font-hand sketch-border-sm focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder:text-pencil-muted"
               />
               {searchQuery && (
                 <button

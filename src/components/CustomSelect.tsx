@@ -76,10 +76,10 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
-        className={`w-full flex items-center justify-between gap-2 bg-paper dark:bg-neutral-800 border-2 border-pencil dark:border-pencil-dark rounded-md sketch-border-sm ${paddingClasses} transition-all ${
+        className={`w-full flex items-center justify-between gap-2 bg-paper text-pencil border-2 border-pencil rounded-md sketch-border-sm ${paddingClasses} transition-all ${
           disabled
-            ? 'opacity-50 cursor-not-allowed bg-neutral-100'
-            : 'hover:bg-control/50 focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer'
+            ? 'opacity-50 cursor-not-allowed bg-control'
+            : 'hover:bg-control/60 focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer'
         }`}
       >
         <span className="truncate flex items-center gap-1.5 font-bold">
@@ -103,7 +103,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       {isOpen && (
         <div
           role="listbox"
-          className="absolute z-50 mt-1 w-full bg-paper dark:bg-neutral-800 border-2 border-pencil dark:border-pencil-dark rounded-md sketch-border shadow-sketch max-h-60 overflow-y-auto py-1 animate-fade-in"
+          className="absolute z-50 mt-1 w-full bg-paper text-pencil border-2 border-pencil rounded-md sketch-border shadow-sketch max-h-60 overflow-y-auto py-1 animate-fade-in"
         >
           {options.length === 0 ? (
             <div className="px-3 py-2 text-xs text-pencil-muted text-center font-hand">
@@ -120,8 +120,8 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                   onClick={() => handleSelect(option.value)}
                   className={`px-3 py-2 text-xs md:text-sm font-hand cursor-pointer flex items-center justify-between gap-2 transition-colors ${
                     isSelected
-                      ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-900 dark:text-amber-200 font-extrabold'
-                      : 'hover:bg-control/60 text-pencil dark:text-pencil-dark'
+                      ? 'bg-amber-100 text-amber-900 font-extrabold'
+                      : 'hover:bg-control text-pencil'
                   }`}
                 >
                   <div className="flex items-center gap-2 truncate">
