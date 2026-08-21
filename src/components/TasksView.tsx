@@ -1710,7 +1710,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                     value={webhookUrlInput}
                     onChange={(e) => setWebhookUrlInput(e.target.value)}
                     placeholder="วาง Webhook URL ที่ได้จาก Google Apps Script..."
-                    className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-xs font-hand font-bold"
+                    className="w-full p-2.5 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-emerald-300 border-2 border-pencil rounded-md text-xs font-hand font-bold sketch-border-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
 
