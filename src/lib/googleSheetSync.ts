@@ -12,6 +12,7 @@ export const setGoogleSheetWebhookUrl = (url: string): void => {
 
 /**
  * Pushes jobs data to the specified Google Apps Script Webhook URL
+ * formatted to match the user's exact CSV template (23 columns)
  */
 export const syncJobsToGoogleSheet = async (jobs: any[], channels: any[], customWebhookUrl?: string): Promise<{ success: boolean; message: string }> => {
   const webhookUrl = customWebhookUrl || getGoogleSheetWebhookUrl();
@@ -32,55 +33,69 @@ export const syncJobsToGoogleSheet = async (jobs: any[], channels: any[], custom
       const foreignAdded = Number(job.foreign_added) || 0;
       const foreignGift = Number(job.foreign_gift) || 0;
       const foreignDone = Number(job.foreign_done) || 0;
+      const foreignRemain = (foreignAdded + foreignGift) - foreignDone;
+
       const thaiAdded = Number(job.thai_added) || 0;
       const thaiGift = Number(job.thai_gift) || 0;
       const thaiDone = Number(job.thai_done) || 0;
+      const thaiRemain = (thaiAdded + thaiGift) - thaiDone;
+
+      const totalTarget = startCount + foreignAdded + foreignGift + thaiAdded + thaiGift;
       const price = Number(job.price) || 0;
       const cost = Number(job.cost) || 0;
       const profit = price - cost;
 
-      // Extract Order / Chat ID if available
-      let chatOrderId = '';
-      if (job.client_chat_url) {
-        const match = job.client_chat_url.match(/(\d+)/);
-        if (match) chatOrderId = match[1];
+      // Calculate days taken
+      let daysTaken = '';
+      if (job.start_date && job.end_date) {
+        const start = new Date(job.start_date).getTime();
+        const end = new Date(job.end_date).getTime();
+        if (!isNaN(start) && !isNaN(end)) {
+          const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+          daysTaken = String(Math.max(1, diffDays));
+        }
+      }
+
+      // Link: profile link or job link or chat url
+      let link = job.link || '';
+      if (!link && job.account_name) {
+        link = `https://www.instagram.com/${job.account_name}`;
       }
 
       return {
         no: index + 1,
-        id: job.id,
-        title: job.title || '',
-        channel: channelName,
-        category: job.category || 'fastwork_smm',
+        link: link,
+        account_name: job.account_name || job.title || '',
+        client_chat: job.client_chat_url || job.client_name || '',
         platform: job.platform || '',
         service_type: job.service_type || '',
-        client_name: job.client_name || '',
-        account_name: job.account_name ? `@${job.account_name}` : '',
-        link: job.link || '',
-        client_chat_url: job.client_chat_url || '',
-        chat_order_id: chatOrderId,
-        status: job.status || '',
-        start_count: startCount,
-        target_added: foreignAdded + foreignGift + thaiAdded + thaiGift,
-        total_target: startCount + foreignAdded + foreignGift + thaiAdded + thaiGift,
-        foreign_done: foreignDone,
-        thai_done: thaiDone,
-        total_done: foreignDone + thaiDone,
         price: price,
-        cost: cost,
-        profit: profit,
+        start_count: startCount,
+        total_target: totalTarget,
+        foreign_added: foreignAdded,
+        foreign_gift: foreignGift,
+        foreign_done: foreignDone,
+        foreign_remain: foreignRemain,
+        thai_added: thaiAdded,
+        thai_gift: thaiGift,
+        thai_done: thaiDone,
+        thai_remain: thaiRemain,
         start_date: job.start_date || '',
         end_date: job.end_date || '',
+        days_taken: daysTaken,
+        status: job.status || '',
         notes: job.notes || '',
         provider_info: job.provider_info || '',
-        created_at: job.created_at || ''
+        cost: cost,
+        profit: profit,
+        channel: channelName
       };
     });
 
     const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'text/plain;charset=utf-8', // Google Apps Script handles text/plain without CORS preflight issues
+        'Content-Type': 'text/plain;charset=utf-8',
       },
       body: JSON.stringify({
         action: 'SYNC_JOBS',
@@ -116,62 +131,76 @@ export const syncJobsToGoogleSheet = async (jobs: any[], channels: any[], custom
 };
 
 /**
- * Downloads jobs data as a UTF-8 BOM encoded CSV file
+ * Downloads jobs data as a UTF-8 BOM encoded CSV file matching exact 23 columns template
  */
-export const downloadJobsAsCSV = (jobs: any[], channels: any[]): void => {
+export const downloadJobsAsCSV = (jobs: any[], _channels: any[]): void => {
   if (!jobs || jobs.length === 0) {
     alert('ไม่มีข้อมูลงานสำหรับส่งออก');
     return;
   }
 
   const headers = [
-    'ลำดับ', 'ชื่องาน', 'ช่องทาง', 'หมวดหมู่', 'บริการ/แพลตฟอร์ม', 'ประเภท',
-    'ผู้ว่าจ้าง', 'IG/TikTok Handle', 'ID คำสั่งซื้อ/แชท', 'สถานะ',
-    'ยอดเดิม', 'เป้าหมายรวม', 'ทำแล้ว(ต่างชาติ)', 'ทำแล้ว(ไทย)', 'รวมทำแล้ว',
-    'ราคาขาย', 'ต้นทุน', 'กำไร', 'วันเริ่ม', 'วันเสร็จ', 'ลิงก์งาน', 'หมายเหตุ'
+    'Link', 'ชื่อ', 'ผู้ว่าจ้าง', 'แฟลตฟอร์ม', 'บริการ', 'ราคา',
+    'ยอดเดิม', 'ยอดรวม', 'เพิ่มฟอลต่างาชาติ', 'แถม', 'ทำไปแล้ว', 'คงเหลือต่างชาติ',
+    'เพิ่มฟอลไทย', 'แถม', 'ทำไปแล้ว', 'คงเหลือไทย', 'วันที่เริ่ม', 'วันที่สิ้นสุด',
+    'เวลาที่ใช้ไป', 'สถานะ', 'หมายเหตุ', 'ลิงก์สั่งซื้อ SMM', 'ค่าใช่จ่าย'
   ];
 
-  const rows = jobs.map((job, idx) => {
-    const chan = channels.find(c => c.id === job.channel_id);
-    const channelName = chan ? chan.name : 'ลูกค้าตรง/อื่นๆ';
+  const rows = jobs.map((job) => {
     const price = Number(job.price) || 0;
     const cost = Number(job.cost) || 0;
-    const profit = price - cost;
+    const startCount = Number(job.start_count) || 0;
+    const foreignAdded = Number(job.foreign_added) || 0;
+    const foreignGift = Number(job.foreign_gift) || 0;
+    const foreignDone = Number(job.foreign_done) || 0;
+    const foreignRemain = (foreignAdded + foreignGift) - foreignDone;
 
-    let chatOrderId = '';
-    if (job.client_chat_url) {
-      const match = job.client_chat_url.match(/(\d+)/);
-      if (match) chatOrderId = match[1];
+    const thaiAdded = Number(job.thai_added) || 0;
+    const thaiGift = Number(job.thai_gift) || 0;
+    const thaiDone = Number(job.thai_done) || 0;
+    const thaiRemain = (thaiAdded + thaiGift) - thaiDone;
+
+    const totalTarget = startCount + foreignAdded + foreignGift + thaiAdded + thaiGift;
+
+    let daysTaken = '';
+    if (job.start_date && job.end_date) {
+      const start = new Date(job.start_date).getTime();
+      const end = new Date(job.end_date).getTime();
+      if (!isNaN(start) && !isNaN(end)) {
+        const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+        daysTaken = String(Math.max(1, diffDays));
+      }
     }
 
-    const startCount = Number(job.start_count) || 0;
-    const foreignDone = Number(job.foreign_done) || 0;
-    const thaiDone = Number(job.thai_done) || 0;
-    const targetAdded = (Number(job.foreign_added)||0) + (Number(job.foreign_gift)||0) + (Number(job.thai_added)||0) + (Number(job.thai_gift)||0);
+    let link = job.link || '';
+    if (!link && job.account_name) {
+      link = `https://www.instagram.com/${job.account_name}`;
+    }
 
     return [
-      idx + 1,
-      `"${(job.title || '').replace(/"/g, '""')}"`,
-      `"${channelName.replace(/"/g, '""')}"`,
-      `"${(job.category || 'fastwork_smm').replace(/"/g, '""')}"`,
+      `"${(link).replace(/"/g, '""')}"`,
+      `"${(job.account_name || job.title || '').replace(/"/g, '""')}"`,
+      `"${(job.client_chat_url || job.client_name || '').replace(/"/g, '""')}"`,
       `"${(job.platform || '').replace(/"/g, '""')}"`,
       `"${(job.service_type || '').replace(/"/g, '""')}"`,
-      `"${(job.client_name || '').replace(/"/g, '""')}"`,
-      `"${(job.account_name || '').replace(/"/g, '""')}"`,
-      `"${chatOrderId}"`,
-      `"${(job.status || '').replace(/"/g, '""')}"`,
-      startCount,
-      startCount + targetAdded,
-      foreignDone,
-      thaiDone,
-      foreignDone + thaiDone,
       price,
-      cost,
-      profit,
+      startCount,
+      totalTarget,
+      foreignAdded,
+      foreignGift,
+      foreignDone,
+      foreignRemain,
+      thaiAdded,
+      thaiGift,
+      thaiDone,
+      thaiRemain,
       job.start_date || '',
       job.end_date || '',
-      `"${(job.link || '').replace(/"/g, '""')}"`,
-      `"${(job.notes || '').replace(/"/g, '""')}"`
+      daysTaken,
+      `"${(job.status || '').replace(/"/g, '""')}"`,
+      `"${(job.notes || '').replace(/"/g, '""')}"`,
+      `"${(job.provider_info || '').replace(/"/g, '""')}"`,
+      cost
     ];
   });
 
@@ -187,38 +216,57 @@ export const downloadJobsAsCSV = (jobs: any[], channels: any[]): void => {
 };
 
 /**
- * Example Google Apps Script template string to show users in modal/settings
+ * Google Apps Script code matching the exact 23 columns structure of user's sheet
  */
 export const GOOGLE_APPS_SCRIPT_SAMPLE = `function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     
-    // Create Headers if sheet is empty
+    // ตั้งค่าหัวตาราง (Header 23 คอลัมน์ ตรงตามโครงสร้างชีทเดิมของคุณ)
     if (sheet.getLastRow() === 0) {
       sheet.appendRow([
-        "ลำดับ", "ชื่องาน", "ช่องทาง", "หมวดหมู่", "บริการ/แพลตฟอร์ม", "ประเภท", 
-        "ผู้ว่าจ้าง", "IG/TikTok Handle", "ID คำสั่งซื้อ/แชท", "สถานะ", 
-        "ยอดเดิม", "เป้าหมายรวม", "รวมทำแล้ว", "ราคาขาย", "ต้นทุน", "กำไร", 
-        "วันเริ่ม", "วันเสร็จ", "ลิงก์งาน", "อัปเดตล่าสุด"
+        "Link", "ชื่อ", "ผู้ว่าจ้าง", "แฟลตฟอร์ม", "บริการ", "ราคา",
+        "ยอดเดิม", "ยอดรวม", "เพิ่มฟอลต่างาชาติ", "แถม", "ทำไปแล้ว", "คงเหลือต่างชาติ",
+        "เพิ่มฟอลไทย", "แถม", "ทำไปแล้ว", "คงเหลือไทย", "วันที่เริ่ม", "วันที่สิ้นสุด",
+        "เวลาที่ใช้ไป", "สถานะ", "หมายเหตุ", "ลิงก์สั่งซื้อ SMM", "ค่าใช่จ่าย"
       ]);
     }
     
-    // Clear existing data rows (keep header)
+    // เคลียร์ข้อมูลเดิม (เว้นบรรทัดหัวตารางไว้)
     if (sheet.getLastRow() > 1) {
       sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).clearContent();
     }
     
-    // Write new rows
+    // เขียนข้อมูลแถวใหม่ทั้งหมด
     var jobs = data.jobs || [];
     var rows = [];
     for (var i = 0; i < jobs.length; i++) {
       var j = jobs[i];
       rows.push([
-        j.no, j.title, j.channel, j.category, j.platform, j.service_type,
-        j.client_name, j.account_name, j.chat_order_id, j.status,
-        j.start_count, j.total_target, j.total_done, j.price, j.cost, j.profit,
-        j.start_date, j.end_date, j.link, new Date().toLocaleString("th-TH")
+        j.link || "",
+        j.account_name || "",
+        j.client_chat || "",
+        j.platform || "",
+        j.service_type || "",
+        j.price || 0,
+        j.start_count || 0,
+        j.total_target || 0,
+        j.foreign_added || 0,
+        j.foreign_gift || 0,
+        j.foreign_done || 0,
+        j.foreign_remain || 0,
+        j.thai_added || 0,
+        j.thai_gift || 0,
+        j.thai_done || 0,
+        j.thai_remain || 0,
+        j.start_date || "",
+        j.end_date || "",
+        j.days_taken || "",
+        j.status || "",
+        j.notes || "",
+        j.provider_info || "",
+        j.cost || 0
       ]);
     }
     
@@ -228,7 +276,7 @@ export const GOOGLE_APPS_SCRIPT_SAMPLE = `function doPost(e) {
     
     return ContentService.createTextOutput(JSON.stringify({
       status: "success",
-      message: "อัปเดตข้อมูล " + rows.length + " รายการสำเร็จ!"
+      message: "อัปเดตข้อมูล " + rows.length + " รายการเข้า Google Sheet เรียบร้อยแล้ว!"
     })).setMimeType(ContentService.MimeType.JSON);
     
   } catch (err) {
