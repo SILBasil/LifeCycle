@@ -4,8 +4,16 @@ import {
   ListTodo, Plus, Trash2, Calendar, Folder, Loader2, 
   Briefcase, Link as LinkIcon, 
   MessageSquare, ExternalLink, AlertCircle,
-  Edit3, X, Tag
+  Edit3, X, Tag, Search, FileSpreadsheet, Download, Copy, Check
 } from 'lucide-react';
+import { CustomSelect } from './CustomSelect';
+import { 
+  syncJobsToGoogleSheet, 
+  downloadJobsAsCSV, 
+  getGoogleSheetWebhookUrl, 
+  setGoogleSheetWebhookUrl,
+  GOOGLE_APPS_SCRIPT_SAMPLE 
+} from '../lib/googleSheetSync';
 
 interface TasksViewProps {
   userId: string;
@@ -170,11 +178,18 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
   const [smmProviderInfo, setSmmProviderInfo] = useState('');
   const [jobStatus, setJobStatus] = useState<string>('กำลังดำเนินการ');
 
+  // Search state for freelance jobs
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Google Sheets sync states
+  const [syncingSheet, setSyncingSheet] = useState<boolean>(false);
+  const [showGSheetModal, setShowGSheetModal] = useState<boolean>(false);
+  const [webhookUrlInput, setWebhookUrlInput] = useState<string>(getGoogleSheetWebhookUrl());
+  const [copiedCode, setCopiedCode] = useState<boolean>(false);
+
   // Editing state
   const [editingJob, setEditingJob] = useState<any | null>(null);
   const [tempCurrentCount, setTempCurrentCount] = useState<string>('');
-
-
 
   const fetchChannels = async () => {
     try {
@@ -236,11 +251,66 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
         }
         throw error;
       }
-      setJobs(data || []);
+
+      const loadedJobs = data || [];
+      const now = new Date().getTime();
+      const threeDaysMs = 3 * 24 * 60 * 60 * 1000; // 3 days in milliseconds
+      const jobsToAutoClose: string[] = [];
+
+      // Auto-transition completed jobs ("เสร็จสิ้น") older than 3 days to "เสร็จสิ้นปิดงานแล้ว"
+      const processedJobs = loadedJobs.map((job: any) => {
+        if (job.status === 'เสร็จสิ้น') {
+          const compDateStr = job.end_date || job.updated_at || job.created_at;
+          if (compDateStr) {
+            const compTime = new Date(compDateStr).getTime();
+            if (!isNaN(compTime) && (now - compTime >= threeDaysMs)) {
+              jobsToAutoClose.push(job.id);
+              return { ...job, status: 'เสร็จสิ้นปิดงานแล้ว' };
+            }
+          }
+        }
+        return job;
+      });
+
+      setJobs(processedJobs);
+
+      // Async database update for expired jobs
+      if (jobsToAutoClose.length > 0) {
+        supabase
+          .from('freelance_jobs')
+          .update({ status: 'เสร็จสิ้นปิดงานแล้ว' })
+          .in('id', jobsToAutoClose)
+          .eq('user_id', userId)
+          .then(({ error: autoErr }) => {
+            if (autoErr) console.error('Error auto-closing expired jobs:', autoErr);
+            else console.log(`Auto-closed ${jobsToAutoClose.length} jobs completed over 3 days ago.`);
+          });
+      }
     } catch (err) {
       console.error('Error fetching freelance jobs:', err);
     } finally {
       setJobsLoading(false);
+    }
+  };
+
+  const handleSyncGoogleSheet = async (customUrl?: string) => {
+    const targetUrl = customUrl !== undefined ? customUrl : getGoogleSheetWebhookUrl();
+    if (!targetUrl) {
+      setShowGSheetModal(true);
+      return;
+    }
+
+    try {
+      setSyncingSheet(true);
+      const res = await syncJobsToGoogleSheet(jobs, channels, targetUrl);
+      alert(res.message);
+      if (res.success) {
+        setShowGSheetModal(false);
+      }
+    } catch (err: any) {
+      alert('เกิดข้อผิดพลาดในการซิงค์: ' + (err.message || 'ไม่ทราบสาเหตุ'));
+    } finally {
+      setSyncingSheet(false);
     }
   };
 
@@ -715,7 +785,35 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
       : filterPlatform === 'other'
         ? job.category !== 'fastwork_smm'
         : job.platform === filterPlatform;
-    return channelMatch && statusMatch && platformMatch;
+
+    let searchMatch = true;
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      const title = (job.title || '').toLowerCase();
+      const accountName = (job.account_name || '').toLowerCase();
+      const clientName = (job.client_name || '').toLowerCase();
+      const chatUrl = (job.client_chat_url || '').toLowerCase();
+      const notes = (job.notes || '').toLowerCase();
+      const providerInfo = (job.provider_info || '').toLowerCase();
+      const platform = (job.platform || '').toLowerCase();
+      const serviceType = (job.service_type || '').toLowerCase();
+
+      // Extract numeric ID from chat URL if present (e.g. 123456)
+      const chatOrderIdMatch = chatUrl.match(/(\d+)/);
+      const chatOrderId = chatOrderIdMatch ? chatOrderIdMatch[1] : '';
+
+      searchMatch = title.includes(q) ||
+        accountName.includes(q) ||
+        clientName.includes(q) ||
+        chatUrl.includes(q) ||
+        chatOrderId.includes(q) ||
+        notes.includes(q) ||
+        providerInfo.includes(q) ||
+        platform.includes(q) ||
+        serviceType.includes(q);
+    }
+
+    return channelMatch && statusMatch && platformMatch && searchMatch;
   });
 
   // Freelance stats summary
@@ -939,15 +1037,15 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                   </div>
                   <div>
                     <label className="block text-xs font-bold mb-1 font-hand">ความเร่งด่วน:</label>
-                    <select
+                    <CustomSelect
                       value={newPriority}
-                      onChange={(e) => setNewPriority(e.target.value)}
-                      className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                    >
-                      <option value="high">🔴 ด่วน (High)</option>
-                      <option value="medium">🟡 ปกติ (Medium)</option>
-                      <option value="low">🟢 สบายๆ (Low)</option>
-                    </select>
+                      onChange={(val) => setNewPriority(val)}
+                      options={[
+                        { value: 'high', label: '🔴 ด่วน (High)' },
+                        { value: 'medium', label: '🟡 ปกติ (Medium)' },
+                        { value: 'low', label: '🟢 สบายๆ (Low)' }
+                      ]}
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-bold mb-1 font-hand">กำหนดส่ง (Due Date):</label>
@@ -993,18 +1091,17 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
 
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold font-hand text-pencil-muted">กรองตามโปรเจกต์:</span>
-              <select
-                value={filterProject}
-                onChange={(e) => setFilterProject(e.target.value)}
-                className="p-1 text-xs font-bold font-hand bg-control sketch-border-sm focus:outline-none"
-              >
-                <option value="all">📁 ทั้งหมด</option>
-                {projects.map((proj, i) => (
-                  <option key={i} value={proj}>
-                    📁 {proj}
-                  </option>
-                ))}
-              </select>
+              <div className="w-40">
+                <CustomSelect
+                  value={filterProject}
+                  onChange={(val) => setFilterProject(val)}
+                  options={[
+                    { value: 'all', label: '📁 โปรเจกต์ทั้งหมด' },
+                    ...projects.map(proj => ({ value: proj, label: `📁 ${proj}` }))
+                  ]}
+                  size="sm"
+                />
+              </div>
             </div>
           </div>
 
@@ -1116,516 +1213,629 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                   ติดตามสถานะผู้ติดตาม, ลิงก์แชทของลูกค้า, ต้นทุน และคำนวณกำไรอัตโนมัติ
                 </p>
               </div>
-              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                {!showAddJobForm && (
-                  <button
-                    onClick={() => setShowAddJobForm(true)}
-                    className="sketch-button bg-amber-50 text-amber-800 text-xs rounded sketch-border-sm shadow-sketch-sm justify-center py-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span className="font-hand">บันทึกงานชิ้นใหม่</span>
-                  </button>
-                )}
+              <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
+                <button
+                  onClick={() => setShowAddJobForm(true)}
+                  className="sketch-button bg-amber-50 text-amber-900 hover:bg-amber-100 text-xs rounded sketch-border-sm shadow-sketch-sm justify-center py-2 px-3 flex-grow sm:flex-grow-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="font-hand font-bold">บันทึกงานชิ้นใหม่</span>
+                </button>
+                <button
+                  onClick={() => handleSyncGoogleSheet()}
+                  disabled={syncingSheet}
+                  className="sketch-button bg-emerald-50 text-emerald-900 hover:bg-emerald-100 text-xs rounded sketch-border-sm shadow-sketch-sm justify-center py-2 px-3 flex-grow sm:flex-grow-0"
+                  title="ซิงค์ข้อมูลงานเสริมไปยัง Google Sheet"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                  <span className="font-hand font-bold">{syncingSheet ? 'กำลังซิงค์...' : 'ซิงค์ไป Google Sheet'}</span>
+                </button>
+                <button
+                  onClick={() => downloadJobsAsCSV(jobs, channels)}
+                  className="sketch-button bg-indigo-50 text-indigo-900 hover:bg-indigo-100 text-xs rounded sketch-border-sm shadow-sketch-sm justify-center py-2 px-3 flex-grow sm:flex-grow-0"
+                  title="ดาวน์โหลดข้อมูลเป็นไฟล์ CSV สำหรับเปิดใน Excel หรือ Google Sheet"
+                >
+                  <Download className="w-4 h-4 text-indigo-600" />
+                  <span className="font-hand font-bold">ส่งออก CSV</span>
+                </button>
               </div>
             </div>
           </div>
 
-          {/* Add Job Form */}
+          {/* 🪟 Add Job Modal Popup */}
           {showAddJobForm && (
-            <div className="bg-paper p-6 sketch-border shadow-sketch transform rotate-0.5 text-left">
-              <div className="flex justify-between items-center mb-4 pb-2 border-b border-dashed border-pencil">
-                <h3 className="text-base font-extrabold font-hand">✏️ บันทึกรายละเอียดงานใหม่</h3>
-                <button onClick={() => setShowAddJobForm(false)} className="text-xs font-bold underline font-hand">
-                  ปิดหน้าต่าง
-                </button>
-              </div>
-
-              {/* 1. Category Template Switcher at the very top */}
-              <div className="mb-4">
-                <label className="block text-xs font-bold mb-1.5 font-hand text-pencil-muted">กรุณาเลือกรูปแบบเทมเพลตงาน:</label>
-                <div className="grid grid-cols-2 gap-2 bg-control/30 p-1 sketch-border-sm">
-                  <button
-                    type="button"
-                    onClick={() => setJobCategory('fastwork_smm')}
-                    className={`py-2 text-xs sm:text-sm font-extrabold font-hand rounded transition-all text-center ${
-                      jobCategory === 'fastwork_smm' 
-                        ? 'bg-amber-100 text-amber-900 border border-pencil shadow-sketch-sm' 
-                        : 'text-pencil hover:bg-amber-50/50'
-                    }`}
-                  >
-                    🚀 Fastwork / ปั๊มฟอล (SMM)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setJobCategory('other_freelance')}
-                    className={`py-2 text-xs sm:text-sm font-extrabold font-hand rounded transition-all text-center ${
-                      jobCategory === 'other_freelance' 
-                        ? 'bg-indigo-100 text-indigo-900 border border-pencil shadow-sketch-sm' 
-                        : 'text-pencil hover:bg-indigo-50/50'
-                    }`}
-                  >
-                    🎨 งานทั่วไป / พัฒนาเว็บ (อื่นๆ)
+            <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+              <div className="bg-paper p-6 sketch-border shadow-sketch w-full max-w-3xl transform rotate-0.5 text-left space-y-4 my-8 max-h-[90vh] overflow-y-auto">
+                <div className="flex justify-between items-center mb-4 pb-2 border-b border-dashed border-pencil">
+                  <h3 className="text-base md:text-lg font-extrabold font-hand flex items-center gap-2">
+                    <Plus className="w-5 h-5 text-amber-500" /> ✏️ บันทึกรายละเอียดงานใหม่
+                  </h3>
+                  <button onClick={() => setShowAddJobForm(false)} className="p-1 hover:bg-control/50 rounded-full sketch-border-sm">
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
-              </div>
 
-              <form onSubmit={handleAddJob} className="space-y-4">
-                {jobCategory === 'fastwork_smm' ? (
-                  /* 🚀 SMM TEMPLATE FIELDS */
-                  <div className="space-y-4">
-                    {/* SMM Link Row (Auto Extract) */}
-                    <div className="p-3 bg-amber-50/40 border border-dashed border-amber-300 rounded space-y-2">
-                      <span className="text-[10px] font-bold text-amber-800 font-hand block">
-                        💡 วางลิงก์ก่อนเพื่อดึงชื่อผู้ใช้และตั้งชื่อลูกค้า/ชื่องานให้อัตโนมัติ
-                      </span>
+                {/* 1. Category Template Switcher */}
+                <div className="mb-4">
+                  <label className="block text-xs font-bold mb-1.5 font-hand text-pencil-muted">กรุณาเลือกรูปแบบเทมเพลตงาน:</label>
+                  <div className="grid grid-cols-2 gap-2 bg-control/30 p-1 sketch-border-sm">
+                    <button
+                      type="button"
+                      onClick={() => setJobCategory('fastwork_smm')}
+                      className={`py-2 text-xs sm:text-sm font-extrabold font-hand rounded transition-all text-center ${
+                        jobCategory === 'fastwork_smm' 
+                          ? 'bg-amber-100 text-amber-900 border border-pencil shadow-sketch-sm' 
+                          : 'text-pencil hover:bg-amber-50/50'
+                      }`}
+                    >
+                      🚀 Fastwork / ปั๊มฟอล (SMM)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setJobCategory('other_freelance')}
+                      className={`py-2 text-xs sm:text-sm font-extrabold font-hand rounded transition-all text-center ${
+                        jobCategory === 'other_freelance' 
+                          ? 'bg-indigo-100 text-indigo-900 border border-pencil shadow-sketch-sm' 
+                          : 'text-pencil hover:bg-indigo-50/50'
+                      }`}
+                    >
+                      🎨 งานทั่วไป / พัฒนาเว็บ (อื่นๆ)
+                    </button>
+                  </div>
+                </div>
+
+                <form onSubmit={handleAddJob} className="space-y-4">
+                  {jobCategory === 'fastwork_smm' ? (
+                    /* 🚀 SMM TEMPLATE FIELDS */
+                    <div className="space-y-4">
+                      {/* SMM Link Row */}
+                      <div className="p-3 bg-amber-50/40 border border-dashed border-amber-300 rounded space-y-2">
+                        <span className="text-[10px] font-bold text-amber-800 font-hand block">
+                          💡 วางลิงก์ก่อนเพื่อดึงชื่อผู้ใช้และตั้งชื่อลูกค้า/ชื่องานให้อัตโนมัติ
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-bold mb-1 font-hand">ลิงก์โปรไฟล์ / ลิงก์โพสต์ลูกค้า:</label>
+                            <input
+                              type="url"
+                              value={smmLink}
+                              onChange={(e) => handleSmmLinkChange(e.target.value)}
+                              placeholder="วางลิงก์ IG, TikTok เพื่อดึงชื่อผู้ใช้อัตโนมัติ"
+                              className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold mb-1 font-hand">ชื่อบัญชีลูกค้า (Handle):</label>
+                            <input
+                              type="text"
+                              value={smmAccountName}
+                              onChange={(e) => setSmmAccountName(e.target.value)}
+                              placeholder="ดึงจากลิงก์ หรือพิมพ์เอง เช่น natachaseq"
+                              className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold mb-1 font-hand">ชื่องาน / ลูกค้า:</label>
+                          <input
+                            type="text"
+                            value={jobTitle}
+                            onChange={(e) => setJobTitle(e.target.value)}
+                            placeholder="เช่น Maymii IG, คุณทอม ตต"
+                            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold mb-1 font-hand flex justify-between items-center">
+                            <span>ช่องทางรับงาน:</span>
+                            <button
+                              type="button"
+                              onClick={() => setShowChannelManage(true)}
+                              className="text-[10px] text-amber-600 hover:underline flex items-center gap-0.5 font-bold font-hand"
+                            >
+                              <Tag className="w-2.5 h-2.5" /> จัดการช่องทาง
+                            </button>
+                          </label>
+                          <CustomSelect
+                            value={selectedChannelId}
+                            onChange={(newChanId) => {
+                              setSelectedChannelId(newChanId);
+                              const services = getFormAvailableServices(newChanId);
+                              if (services.length > 0) {
+                                setSmmPlatform(services[0]);
+                              } else {
+                                setSmmPlatform('อื่นๆ');
+                              }
+                            }}
+                            options={[
+                              { value: '', label: '-- ลูกค้าโดยตรง / อื่นๆ --' },
+                              ...channels.map((chan) => ({ value: chan.id, label: chan.name }))
+                            ]}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold mb-1 font-hand">บริการ SMM:</label>
+                          <CustomSelect
+                            value={smmPlatform}
+                            onChange={(val) => setSmmPlatform(val)}
+                            options={getFormAvailableServices(selectedChannelId).map((s: string) => ({ value: s, label: s }))}
+                          />
+                        </div>
+                      </div>
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-xs font-bold mb-1 font-hand">ลิงก์โปรไฟล์ / ลิงก์โพสต์ลูกค้า:</label>
-                          <input
-                            type="url"
-                            value={smmLink}
-                            onChange={(e) => handleSmmLinkChange(e.target.value)}
-                            placeholder="วางลิงก์ IG, TikTok เพื่อดึงชื่อผู้ใช้อัตโนมัติ"
-                            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold mb-1 font-hand">ชื่อบัญชีลูกค้า (Handle):</label>
+                          <label className="block text-xs font-bold mb-1 font-hand">ชื่อผู้ว่าจ้าง:</label>
                           <input
                             type="text"
-                            value={smmAccountName}
-                            onChange={(e) => setSmmAccountName(e.target.value)}
-                            placeholder="ดึงจากลิงก์ หรือพิมพ์เอง เช่น natachaseq"
-                            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold mb-1 font-hand">ชื่องาน / ลูกค้า:</label>
-                        <input
-                          type="text"
-                          value={jobTitle}
-                          onChange={(e) => setJobTitle(e.target.value)}
-                          placeholder="เช่น Maymii IG, คุณทอม ตต"
-                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold mb-1 font-hand flex justify-between items-center">
-                          <span>ช่องทางรับงาน:</span>
-                          <button
-                            type="button"
-                            onClick={() => setShowChannelManage(true)}
-                            className="text-[10px] text-amber-600 hover:underline flex items-center gap-0.5 font-bold font-hand"
-                          >
-                            <Tag className="w-2.5 h-2.5" /> จัดการช่องทาง
-                          </button>
-                        </label>
-                        <select
-                          value={selectedChannelId}
-                          onChange={(e) => {
-                            const newChanId = e.target.value;
-                            setSelectedChannelId(newChanId);
-                            const services = getFormAvailableServices(newChanId);
-                            if (services.length > 0) {
-                              setSmmPlatform(services[0]);
-                            } else {
-                              setSmmPlatform('อื่นๆ');
-                            }
-                          }}
-                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                        >
-                          <option value="">-- ลูกค้าโดยตรง / อื่นๆ --</option>
-                          {channels.map((chan) => (
-                            <option key={chan.id} value={chan.id}>
-                              {chan.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold mb-1 font-hand">บริการ SMM:</label>
-                        <select
-                          value={smmPlatform}
-                          onChange={(e) => setSmmPlatform(e.target.value)}
-                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand font-bold"
-                        >
-                          {getFormAvailableServices(selectedChannelId).map((s: string) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold mb-1 font-hand">ชื่อผู้ว่าจ้าง:</label>
-                        <input
-                          type="text"
-                          value={clientName}
-                          onChange={(e) => setClientName(e.target.value)}
-                          placeholder="เช่น สมชาย, voyade"
-                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold mb-1 font-hand">ลิงก์แชทคุยงาน / ID แชท Fastwork:</label>
-                        <input
-                          type="text"
-                          value={clientChatUrl}
-                          onChange={(e) => handleChatUrlChange(e.target.value)}
-                          placeholder="วางลิงก์ หรือพิมพ์แค่ ID เช่น 123456"
-                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                        />
-                      </div>
-                    </div>
-
-                    {/* SMM Detail values */}
-                    <div className="p-4 bg-control/40 sketch-border-sm space-y-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold mb-1 font-hand">ประเภทผู้ติดตาม:</label>
-                          <select
-                            value={smmServiceType}
-                            onChange={(e) => setSmmServiceType(e.target.value)}
-                            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                          >
-                            <option value="ไทย">🇹🇭 ไทย (Thai)</option>
-                            <option value="ต่างชาติ">🌎 ต่างชาติ (Foreign)</option>
-                            <option value="ผสม">🔄 ผสม (Mixed)</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold mb-1 font-hand">ยอดผู้ติดตามเดิม:</label>
-                          <input
-                            type="number"
-                            value={smmStartCount}
-                            onChange={(e) => setSmmStartCount(e.target.value)}
+                            value={clientName}
+                            onChange={(e) => setClientName(e.target.value)}
+                            placeholder="เช่น สมชาย, voyade"
                             className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-bold mb-1 font-hand">ยอดรวมเป้าหมาย (Start+Add):</label>
-                          <input
-                            type="number"
-                            value={smmTargetCount}
-                            readOnly
-                            className="w-full p-2 bg-neutral-100/50 dark:bg-neutral-800/50 border-2 border-pencil rounded-md text-sm font-hand font-extrabold cursor-not-allowed text-pencil-muted"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold mb-1 font-hand">ลิงก์ฝั่งสั่งซื้อ (SMM / ผู้รับงาน):</label>
+                          <label className="block text-xs font-bold mb-1 font-hand">ลิงก์แชทคุยงาน / ID แชท Fastwork:</label>
                           <input
                             type="text"
-                            value={smmProviderInfo}
-                            onChange={(e) => setSmmProviderInfo(e.target.value)}
-                            placeholder="เช่น ลิงก์สั่งซื้อ SMMGen, ตะวัน"
+                            value={clientChatUrl}
+                            onChange={(e) => handleChatUrlChange(e.target.value)}
+                            placeholder="วางลิงก์ หรือพิมพ์แค่ ID เช่น 123456"
                             className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
                           />
                         </div>
                       </div>
 
-                      {/* Foreign details fields (Visible if Service Type is 'ต่างชาติ' or 'ผสม') */}
-                      {(smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม') && (
-                        <div className="border-t border-dashed border-pencil pt-3">
-                          <span className="text-[10px] font-bold text-pencil-muted font-hand block mb-2">
-                            🌎 ฝั่งบริการต่างชาติ (Foreign Follower Service)
-                          </span>
-                          <div className="grid grid-cols-3 gap-4">
-                            <div>
-                              <label className="block text-xs font-bold mb-1 font-hand">เป้าหมายจำนวนเพิ่ม:</label>
-                              <input
-                                type="number"
-                                value={smmForeignAdded}
-                                onChange={(e) => setSmmForeignAdded(e.target.value)}
-                                className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold mb-1 font-hand">จำนวนแถมต่างชาติ:</label>
-                              <input
-                                type="number"
-                                value={smmForeignGift}
-                                onChange={(e) => setSmmForeignGift(e.target.value)}
-                                className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold mb-1 font-hand">ทำไปแล้วต่างชาติ:</label>
-                              <input
-                                type="number"
-                                value={smmForeignDone}
-                                onChange={(e) => setSmmForeignDone(e.target.value)}
-                                className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                              />
-                            </div>
+                      {/* SMM Detail values */}
+                      <div className="p-4 bg-control/40 sketch-border-sm space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                          <div>
+                            <label className="block text-xs font-bold mb-1 font-hand">ประเภทผู้ติดตาม:</label>
+                            <CustomSelect
+                              value={smmServiceType}
+                              onChange={(val) => setSmmServiceType(val)}
+                              options={[
+                                { value: 'ไทย', label: '🇹🇭 ไทย (Thai)' },
+                                { value: 'ต่างชาติ', label: '🌎 ต่างชาติ (Foreign)' },
+                                { value: 'ผสม', label: '🔄 ผสม (Mixed)' }
+                              ]}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold mb-1 font-hand">ยอดผู้ติดตามเดิม:</label>
+                            <input
+                              type="number"
+                              value={smmStartCount}
+                              onChange={(e) => setSmmStartCount(e.target.value)}
+                              className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold mb-1 font-hand">ยอดรวมเป้าหมาย:</label>
+                            <input
+                              type="number"
+                              value={smmTargetCount}
+                              readOnly
+                              className="w-full p-2 bg-neutral-100/50 dark:bg-neutral-800/50 border-2 border-pencil rounded-md text-sm font-hand font-extrabold cursor-not-allowed text-pencil-muted"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold mb-1 font-hand">ลิงก์ฝั่งสั่งซื้อ (SMM):</label>
+                            <input
+                              type="text"
+                              value={smmProviderInfo}
+                              onChange={(e) => setSmmProviderInfo(e.target.value)}
+                              placeholder="เช่น ลิงก์สั่งซื้อ SMMGen"
+                              className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                            />
                           </div>
                         </div>
-                      )}
 
-                      {/* Thai details fields (Visible if Service Type is 'ไทย' or 'ผสม') */}
-                      {(smmServiceType === 'ไทย' || smmServiceType === 'ผสม') && (
-                        <div className="border-t border-dashed border-pencil pt-3">
-                          <span className="text-[10px] font-bold text-pencil-muted font-hand block mb-2">
-                            🇹🇭 ฝั่งบริการไทย (Thai Follower Service)
-                          </span>
-                          <div className="grid grid-cols-3 gap-4">
-                            <div>
-                              <label className="block text-xs font-bold mb-1 font-hand">เป้าหมายจำนวนเพิ่ม:</label>
-                              <input
-                                type="number"
-                                value={smmThaiAdded}
-                                onChange={(e) => setSmmThaiAdded(e.target.value)}
-                                className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold mb-1 font-hand">จำนวนแถมไทย:</label>
-                              <input
-                                type="number"
-                                value={smmThaiGift}
-                                onChange={(e) => setSmmThaiGift(e.target.value)}
-                                className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold mb-1 font-hand">ทำไปแล้วไทย:</label>
-                              <input
-                                type="number"
-                                value={smmThaiDone}
-                                onChange={(e) => setSmmThaiDone(e.target.value)}
-                                className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                              />
+                        {/* Foreign details fields */}
+                        {(smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม') && (
+                          <div className="border-t border-dashed border-pencil pt-3">
+                            <span className="text-[10px] font-bold text-pencil-muted font-hand block mb-2">
+                              🌎 ฝั่งบริการต่างชาติ (Foreign Follower Service)
+                            </span>
+                            <div className="grid grid-cols-3 gap-4">
+                              <div>
+                                <label className="block text-xs font-bold mb-1 font-hand">เป้าหมายจำนวนเพิ่ม:</label>
+                                <input
+                                  type="number"
+                                  value={smmForeignAdded}
+                                  onChange={(e) => setSmmForeignAdded(e.target.value)}
+                                  className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold mb-1 font-hand">จำนวนแถมต่างชาติ:</label>
+                                <input
+                                  type="number"
+                                  value={smmForeignGift}
+                                  onChange={(e) => setSmmForeignGift(e.target.value)}
+                                  className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold mb-1 font-hand">ทำไปแล้วต่างชาติ:</label>
+                                <input
+                                  type="number"
+                                  value={smmForeignDone}
+                                  onChange={(e) => setSmmForeignDone(e.target.value)}
+                                  className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                                />
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  /* 🎨 GENERAL FREELANCE TEMPLATE FIELDS */
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold mb-1 font-hand">ชื่องาน / ลูกค้า:</label>
-                        <input
-                          type="text"
-                          value={jobTitle}
-                          onChange={(e) => setJobTitle(e.target.value)}
-                          placeholder="เช่น พัฒนาเว็บ TRC, Dashboard ขายของ"
-                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold mb-1 font-hand flex justify-between items-center">
-                          <span>ช่องทางรับงาน:</span>
-                          <button
-                            type="button"
-                            onClick={() => setShowChannelManage(true)}
-                            className="text-[10px] text-amber-600 hover:underline flex items-center gap-0.5 font-bold font-hand"
-                          >
-                            <Tag className="w-2.5 h-2.5" /> จัดการช่องทาง
-                          </button>
-                        </label>
-                        <select
-                          value={selectedChannelId}
-                          onChange={(e) => setSelectedChannelId(e.target.value)}
-                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                        >
-                          <option value="">-- ลูกค้าโดยตรง / อื่นๆ --</option>
-                          {channels.map((chan) => (
-                            <option key={chan.id} value={chan.id}>
-                              {chan.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold mb-1 font-hand">ประเภทงาน / บริการ (เช่น เขียนโค้ด, แดชบอร์ด):</label>
-                        <input
-                          type="text"
-                          value={smmPlatform}
-                          onChange={(e) => setSmmPlatform(e.target.value)}
-                          placeholder="เช่น แดชบอร์ดระบบ, เขียนโปรแกรม Backend, งานดีไซน์"
-                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                        />
-                      </div>
-                    </div>
+                        )}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold mb-1 font-hand">ชื่อผู้ว่าจ้าง:</label>
-                        <input
-                          type="text"
-                          value={clientName}
-                          onChange={(e) => setClientName(e.target.value)}
-                          placeholder="เช่น สมชาย, voyade"
-                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                        />
+                        {/* Thai details fields */}
+                        {(smmServiceType === 'ไทย' || smmServiceType === 'ผสม') && (
+                          <div className="border-t border-dashed border-pencil pt-3">
+                            <span className="text-[10px] font-bold text-pencil-muted font-hand block mb-2">
+                              🇹🇭 ฝั่งบริการไทย (Thai Follower Service)
+                            </span>
+                            <div className="grid grid-cols-3 gap-4">
+                              <div>
+                                <label className="block text-xs font-bold mb-1 font-hand">เป้าหมายจำนวนเพิ่ม:</label>
+                                <input
+                                  type="number"
+                                  value={smmThaiAdded}
+                                  onChange={(e) => setSmmThaiAdded(e.target.value)}
+                                  className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold mb-1 font-hand">จำนวนแถมไทย:</label>
+                                <input
+                                  type="number"
+                                  value={smmThaiGift}
+                                  onChange={(e) => setSmmThaiGift(e.target.value)}
+                                  className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold mb-1 font-hand">ทำไปแล้วไทย:</label>
+                                <input
+                                  type="number"
+                                  value={smmThaiDone}
+                                  onChange={(e) => setSmmThaiDone(e.target.value)}
+                                  className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <div>
-                        <label className="block text-xs font-bold mb-1 font-hand">ลิงก์แชทคุยงาน / ID แชท Fastwork:</label>
-                        <input
-                          type="text"
-                          value={clientChatUrl}
-                          onChange={(e) => handleChatUrlChange(e.target.value)}
-                          placeholder="วางลิงก์ หรือพิมพ์แค่ ID เช่น 123456"
-                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold mb-1 font-hand">ความคืบหน้าของงาน (0 - 100%):</label>
-                        <div className="flex items-center gap-2 mt-2">
+                    </div>
+                  ) : (
+                    /* 🎨 GENERAL FREELANCE TEMPLATE FIELDS */
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold mb-1 font-hand">ชื่องาน / ลูกค้า:</label>
                           <input
-                            type="range"
-                            min="0"
-                            max="100"
-                            value={smmThaiDone}
-                            onChange={(e) => setSmmThaiDone(e.target.value)}
-                            className="flex-grow accent-pencil"
+                            type="text"
+                            value={jobTitle}
+                            onChange={(e) => setJobTitle(e.target.value)}
+                            placeholder="เช่น พัฒนาเว็บ TRC, Dashboard ขายของ"
+                            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                            required
                           />
-                          <span className="font-hand font-extrabold text-sm w-12 text-right">{smmThaiDone}%</span>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold mb-1 font-hand flex justify-between items-center">
+                            <span>ช่องทางรับงาน:</span>
+                            <button
+                              type="button"
+                              onClick={() => setShowChannelManage(true)}
+                              className="text-[10px] text-amber-600 hover:underline flex items-center gap-0.5 font-bold font-hand"
+                            >
+                              <Tag className="w-2.5 h-2.5" /> จัดการช่องทาง
+                            </button>
+                          </label>
+                          <CustomSelect
+                            value={selectedChannelId}
+                            onChange={(val) => setSelectedChannelId(val)}
+                            options={[
+                              { value: '', label: '-- ลูกค้าโดยตรง / อื่นๆ --' },
+                              ...channels.map((chan) => ({ value: chan.id, label: chan.name }))
+                            ]}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold mb-1 font-hand">ประเภทงาน / บริการ:</label>
+                          <input
+                            type="text"
+                            value={smmPlatform}
+                            onChange={(e) => setSmmPlatform(e.target.value)}
+                            placeholder="เช่น แดชบอร์ดระบบ, งานดีไซน์"
+                            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold mb-1 font-hand">ชื่อผู้ว่าจ้าง:</label>
+                          <input
+                            type="text"
+                            value={clientName}
+                            onChange={(e) => setClientName(e.target.value)}
+                            placeholder="เช่น สมชาย, voyade"
+                            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold mb-1 font-hand">ลิงก์แชทคุยงาน / ID แชท Fastwork:</label>
+                          <input
+                            type="text"
+                            value={clientChatUrl}
+                            onChange={(e) => handleChatUrlChange(e.target.value)}
+                            placeholder="วางลิงก์ หรือพิมพ์แค่ ID เช่น 123456"
+                            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold mb-1 font-hand">ความคืบหน้าของงาน (0 - 100%):</label>
+                          <div className="flex items-center gap-2 mt-2">
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              value={smmThaiDone}
+                              onChange={(e) => setSmmThaiDone(e.target.value)}
+                              className="flex-grow accent-pencil"
+                            />
+                            <span className="font-hand font-extrabold text-sm w-12 text-right">{smmThaiDone}%</span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Financial Summary Information & Date */}
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                  {/* Financial Summary Information & Date */}
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold mb-1 font-hand">รายได้ (ราคาขาย):</label>
+                      <input
+                        type="number"
+                        value={price}
+                        onChange={(e) => setPrice(e.target.value)}
+                        className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold mb-1 font-hand">ต้นทุน (ค่าใช้จ่าย):</label>
+                      <input
+                        type="number"
+                        value={cost}
+                        onChange={(e) => setCost(e.target.value)}
+                        className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold mb-1 font-hand">สถานะงาน:</label>
+                      <CustomSelect
+                        value={jobStatus}
+                        onChange={(val) => setJobStatus(val)}
+                        options={[
+                          { value: 'ยังไม่เริ่ม', label: '💤 ยังไม่เริ่ม (รอคิว)' },
+                          { value: 'กำลังดำเนินการ', label: '⚡ กำลังดำเนินการ (กำลังทำ)' },
+                          { value: 'เสร็จสิ้น', label: '✓ เสร็จสิ้น (เสร็จแล้ว)' },
+                          { value: 'เสร็จสิ้นปิดงานแล้ว', label: '📁 เสร็จสิ้นปิดงานแล้ว' }
+                        ]}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold mb-1 font-hand">วันที่เริ่มงาน:</label>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold mb-1 font-hand">วันที่สิ้นสุดงาน (ถ้าเสร็จ):</label>
+                      <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                      />
+                    </div>
+                  </div>
+
                   <div>
-                    <label className="block text-xs font-bold mb-1 font-hand">รายได้ (ราคาขาย):</label>
-                    <input
-                      type="number"
-                      value={price}
-                      onChange={(e) => setPrice(e.target.value)}
+                    <label className="block text-xs font-bold mb-1 font-hand">หมายเหตุ / บันทึกเพิ่มเติม:</label>
+                    <textarea
+                      value={jobNotes}
+                      onChange={(e) => setJobNotes(e.target.value)}
+                      placeholder="เช่น สั่งร้านเหมี่ยวจิ 3000 ร้านตะวัน 2000"
                       className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                      rows={2}
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold mb-1 font-hand">ต้นทุน (ค่าใช้จ่าย):</label>
-                    <input
-                      type="number"
-                      value={cost}
-                      onChange={(e) => setCost(e.target.value)}
-                      className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold mb-1 font-hand">สถานะงาน:</label>
-                    <select
-                      value={jobStatus}
-                      onChange={(e) => setJobStatus(e.target.value)}
-                      className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="submit"
+                      disabled={jobsSaving}
+                      className="flex-grow sketch-button justify-center bg-pencil hover:bg-neutral-800 text-white rounded p-2 shadow-sketch"
                     >
-                      <option value="ยังไม่เริ่ม">💤 ยังไม่เริ่ม (รอคิว)</option>
-                      <option value="กำลังดำเนินการ">⚡ กำลังดำเนินการ (กำลังทำ)</option>
-                      <option value="เสร็จสิ้น">✓ เสร็จสิ้น (เสร็จแล้ว)</option>
-                      <option value="เสร็จสิ้นปิดงานแล้ว">📁 เสร็จสิ้นปิดงานแล้ว</option>
-                    </select>
+                      {jobsSaving ? <span className="font-hand">กำลังบันทึก...</span> : <span className="font-hand">บันทึกข้อมูลงานลงสมุดงาน</span>}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddJobForm(false)}
+                      className="sketch-button justify-center bg-control hover:bg-control/80 text-pencil rounded p-2 px-6 font-hand"
+                    >
+                      ยกเลิก
+                    </button>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold mb-1 font-hand">วันที่เริ่มงาน:</label>
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold mb-1 font-hand">วันที่สิ้นสุดงาน (ถ้าเสร็จ):</label>
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold mb-1 font-hand">หมายเหตุ / บันทึกเพิ่มเติม:</label>
-                  <textarea
-                    value={jobNotes}
-                    onChange={(e) => setJobNotes(e.target.value)}
-                    placeholder="เช่น สั่งร้านเหมี่ยวจิ 3000 ร้านตะวัน 2000"
-                    className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                    rows={2}
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={jobsSaving}
-                  className="w-full sketch-button justify-center bg-pencil hover:bg-neutral-800 text-white rounded p-2 shadow-sketch"
-                >
-                  {jobsSaving ? <span className="font-hand">กำลังบันทึก...</span> : <span className="font-hand">บันทึกข้อมูลงานลงสมุดงาน</span>}
-                </button>
-              </form>
+                </form>
+              </div>
             </div>
           )}
 
-          {/* Job Listing Filters */}
-          <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-paper sketch-border shadow-sketch transform rotate-0.5">
-            {/* Status Tabs */}
-            <div className="flex items-center gap-1 bg-control p-1 sketch-border-sm overflow-x-auto max-w-full">
-              {[
-                { id: 'กำลังดำเนินการ', label: '⚡ กำลังทำ' },
-                { id: 'ยังไม่เริ่ม', label: '💤 รอคิว' },
-                { id: 'เสร็จสิ้น', label: '✓ เสร็จสิ้น' },
-                { id: 'เสร็จสิ้นปิดงานแล้ว', label: '📁 เสร็จสิ้นปิดงานแล้ว' },
-                { id: 'all', label: '📁 ทั้งหมด' }
-              ].map(status => (
+          {/* 📊 Modal ตั้งค่า Google Sheets Webhook */}
+          {showGSheetModal && (
+            <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+              <div className="bg-paper p-6 sketch-border shadow-sketch w-full max-w-xl transform rotate-0.5 text-left space-y-4 my-8">
+                <div className="flex justify-between items-center border-b-2 border-dashed border-pencil pb-2">
+                  <h3 className="text-lg font-extrabold font-hand flex items-center gap-2">
+                    <FileSpreadsheet className="w-5 h-5 text-emerald-600" /> ตั้งค่า Google Sheets Webhook
+                  </h3>
+                  <button 
+                    onClick={() => setShowGSheetModal(false)}
+                    className="p-1 hover:bg-control/50 rounded-full sketch-border-sm"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <p className="text-xs text-pencil-muted font-hand leading-relaxed">
+                  ระบุ **Google Apps Script Webhook URL** เพื่อซิงค์ข้อมูลงานเสริมทั้งหมดไปยัง Google Sheet ของคุณโดยตรง:
+                </p>
+
+                <div>
+                  <label className="block text-xs font-bold mb-1 font-hand">Webhook URL (https://script.google.com/macros/s/.../exec):</label>
+                  <input
+                    type="url"
+                    value={webhookUrlInput}
+                    onChange={(e) => setWebhookUrlInput(e.target.value)}
+                    placeholder="วาง Webhook URL ที่ได้จาก Google Apps Script..."
+                    className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-xs font-hand font-bold"
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setGoogleSheetWebhookUrl(webhookUrlInput);
+                      handleSyncGoogleSheet(webhookUrlInput);
+                    }}
+                    disabled={syncingSheet || !webhookUrlInput.trim()}
+                    className="sketch-button bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-4 py-2 rounded font-hand flex-grow justify-center"
+                  >
+                    {syncingSheet ? 'กำลังซิงค์...' : 'บันทึกและสั่งซิงค์ข้อมูลทันที'}
+                  </button>
+                  <button
+                    onClick={() => setShowGSheetModal(false)}
+                    className="sketch-button bg-control hover:bg-control/80 text-pencil text-xs px-4 py-2 rounded font-hand"
+                  >
+                    ยกเลิก
+                  </button>
+                </div>
+
+                {/* Code helper snippet */}
+                <div className="border-t border-dashed border-pencil pt-3 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold font-hand text-pencil">💡 โค้ด Google Apps Script (นำไปวางใน Sheet ของคุณ):</span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_SAMPLE);
+                        setCopiedCode(true);
+                        setTimeout(() => setCopiedCode(false), 2000);
+                      }}
+                      className="text-[10px] px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded border border-amber-300 font-hand font-bold flex items-center gap-1"
+                    >
+                      {copiedCode ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedCode ? 'คัดลอกสำเร็จ!' : 'คัดลอกโค้ด'}</span>
+                    </button>
+                  </div>
+                  <pre className="p-2 bg-neutral-900 text-emerald-400 text-[10px] font-mono rounded max-h-40 overflow-y-auto">
+                    {GOOGLE_APPS_SCRIPT_SAMPLE}
+                  </pre>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Job Listing Search & Filters */}
+          <div className="bg-paper p-4 sketch-border shadow-sketch transform rotate-0.5 space-y-3">
+            {/* 🔍 Search Input Bar */}
+            <div className="relative w-full">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="w-4 h-4 text-pencil-muted" />
+              </div>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="🔍 ค้นหาชื่อ IG, TikTok, FB, ชื่อลูกค้า หรือ ID คำสั่งซื้อแชท (เช่น 123456)..."
+                className="w-full pl-9 pr-8 py-2 bg-paper dark:bg-neutral-800 border-2 border-pencil rounded-md text-sm font-hand sketch-border-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+              {searchQuery && (
                 <button
-                  key={status.id}
-                  onClick={() => setFilterJobStatus(status.id)}
-                  className={`px-3 py-1 text-xs font-bold font-hand rounded transition-colors whitespace-nowrap ${
-                    filterJobStatus === status.id ? 'bg-pencil text-paper' : 'hover:bg-control/50'
-                  }`}
+                  onClick={() => setSearchQuery('')}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-pencil-muted hover:text-pencil font-bold"
                 >
-                  {status.label}
+                  <X className="w-4 h-4" />
                 </button>
-              ))}
+              )}
             </div>
 
-            {/* Dropdowns for Channel and Platform */}
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-1.5 text-xs font-hand">
-                <span className="font-bold text-pencil-muted">ช่องทาง:</span>
-                <select
-                  value={filterChannelId}
-                  onChange={(e) => setFilterChannelId(e.target.value)}
-                  className="p-1 font-bold bg-control sketch-border-sm focus:outline-none text-xs"
-                >
-                  <option value="all">🌐 แหล่งรับงานทั้งหมด</option>
-                  <option value="">👤 ลูกค้าตรง / ไม่ระบุ</option>
-                  {channels.map(c => (
-                    <option key={c.id} value={c.id}>
-                      🏷️ {c.name}
-                    </option>
-                  ))}
-                </select>
+            <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
+              {/* Status Tabs */}
+              <div className="flex items-center gap-1 bg-control p-1 sketch-border-sm overflow-x-auto max-w-full">
+                {[
+                  { id: 'กำลังดำเนินการ', label: '⚡ กำลังทำ' },
+                  { id: 'ยังไม่เริ่ม', label: '💤 รอคิว' },
+                  { id: 'เสร็จสิ้น', label: '✓ เสร็จสิ้น' },
+                  { id: 'เสร็จสิ้นปิดงานแล้ว', label: '📁 เสร็จสิ้นปิดงานแล้ว' },
+                  { id: 'all', label: '📁 ทั้งหมด' }
+                ].map(status => (
+                  <button
+                    key={status.id}
+                    onClick={() => setFilterJobStatus(status.id)}
+                    className={`px-3 py-1 text-xs font-bold font-hand rounded transition-colors whitespace-nowrap ${
+                      filterJobStatus === status.id ? 'bg-pencil text-paper' : 'hover:bg-control/50'
+                    }`}
+                  >
+                    {status.label}
+                  </button>
+                ))}
               </div>
 
-              <div className="flex items-center gap-1.5 text-xs font-hand">
-                <span className="font-bold text-pencil-muted">บริการ SMM:</span>
-                <select
-                  value={filterPlatform}
-                  onChange={(e) => setFilterPlatform(e.target.value)}
-                  className="p-1 font-bold bg-control sketch-border-sm focus:outline-none text-xs"
-                >
-                  <option value="all">📱 บริการทั้งหมด</option>
-                  {getAvailableServices().map((s: string) => (
-                    <option key={s} value={s}>⚙️ {s}</option>
-                  ))}
-                  <option value="other">🎨 งานทั่วไป / อื่นๆ</option>
-                </select>
+              {/* Dropdowns for Channel and Platform */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1.5 text-xs font-hand">
+                  <span className="font-bold text-pencil-muted">ช่องทาง:</span>
+                  <div className="w-48">
+                    <CustomSelect
+                      value={filterChannelId}
+                      onChange={(val) => setFilterChannelId(val)}
+                      options={[
+                        { value: 'all', label: '🌐 แหล่งรับงานทั้งหมด' },
+                        { value: '', label: '👤 ลูกค้าตรง / ไม่ระบุ' },
+                        ...channels.map(c => ({ value: c.id, label: `🏷️ ${c.name}` }))
+                      ]}
+                      size="sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs font-hand">
+                  <span className="font-bold text-pencil-muted">บริการ SMM:</span>
+                  <div className="w-48">
+                    <CustomSelect
+                      value={filterPlatform}
+                      onChange={(val) => setFilterPlatform(val)}
+                      options={[
+                        { value: 'all', label: '📱 บริการทั้งหมด' },
+                        ...getAvailableServices().map((s: string) => ({ value: s, label: `⚙️ ${s}` })),
+                        { value: 'other', label: '🎨 งานทั่วไป / อื่นๆ' }
+                      ]}
+                      size="sm"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -2330,10 +2540,9 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                               <Tag className="w-2.5 h-2.5" /> จัดการช่องทาง
                             </button>
                           </label>
-                          <select
+                          <CustomSelect
                             value={selectedChannelId}
-                            onChange={(e) => {
-                              const newChanId = e.target.value;
+                            onChange={(newChanId) => {
                               setSelectedChannelId(newChanId);
                               const services = getFormAvailableServices(newChanId);
                               if (services.length > 0) {
@@ -2342,27 +2551,19 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                 setSmmPlatform('อื่นๆ');
                               }
                             }}
-                            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                          >
-                            <option value="">-- ลูกค้าโดยตรง / อื่นๆ --</option>
-                            {channels.map((chan) => (
-                              <option key={chan.id} value={chan.id}>
-                                {chan.name}
-                              </option>
-                            ))}
-                          </select>
+                            options={[
+                              { value: '', label: '-- ลูกค้าโดยตรง / อื่นๆ --' },
+                              ...channels.map((chan) => ({ value: chan.id, label: chan.name }))
+                            ]}
+                          />
                         </div>
                         <div>
                           <label className="block text-xs font-bold mb-1 font-hand">บริการ SMM:</label>
-                          <select
+                          <CustomSelect
                             value={smmPlatform}
-                            onChange={(e) => setSmmPlatform(e.target.value)}
-                            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand font-bold"
-                          >
-                            {getFormAvailableServices(selectedChannelId).map((s: string) => (
-                              <option key={s} value={s}>{s}</option>
-                            ))}
-                          </select>
+                            onChange={(val) => setSmmPlatform(val)}
+                            options={getFormAvailableServices(selectedChannelId).map((s: string) => ({ value: s, label: s }))}
+                          />
                         </div>
                       </div>
 
@@ -2394,15 +2595,15 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                           <div>
                             <label className="block text-xs font-bold mb-1 font-hand">ประเภทผู้ติดตาม:</label>
-                            <select
+                            <CustomSelect
                               value={smmServiceType}
-                              onChange={(e) => setSmmServiceType(e.target.value)}
-                              className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                            >
-                              <option value="ไทย">🇹🇭 ไทย (Thai)</option>
-                              <option value="ต่างชาติ">🌎 ต่างชาติ (Foreign)</option>
-                              <option value="ผสม">🔄 ผสม (Mixed)</option>
-                            </select>
+                              onChange={(val) => setSmmServiceType(val)}
+                              options={[
+                                { value: 'ไทย', label: '🇹🇭 ไทย (Thai)' },
+                                { value: 'ต่างชาติ', label: '🌎 ต่างชาติ (Foreign)' },
+                                { value: 'ผสม', label: '🔄 ผสม (Mixed)' }
+                              ]}
+                            />
                           </div>
                           <div>
                             <label className="block text-xs font-bold mb-1 font-hand">ยอดผู้ติดตามเดิม:</label>
@@ -2572,18 +2773,14 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                               <Tag className="w-2.5 h-2.5" /> จัดการช่องทาง
                             </button>
                           </label>
-                          <select
+                          <CustomSelect
                             value={selectedChannelId}
-                            onChange={(e) => setSelectedChannelId(e.target.value)}
-                            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                          >
-                            <option value="">-- ลูกค้าโดยตรง / อื่นๆ --</option>
-                            {channels.map((chan) => (
-                              <option key={chan.id} value={chan.id}>
-                                {chan.name}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={(val) => setSelectedChannelId(val)}
+                            options={[
+                              { value: '', label: '-- ลูกค้าโดยตรง / อื่นๆ --' },
+                              ...channels.map((chan) => ({ value: chan.id, label: chan.name }))
+                            ]}
+                          />
                         </div>
                         <div>
                           <label className="block text-xs font-bold mb-1 font-hand">ประเภทงาน / บริการ (เช่น เขียนโค้ด, แดชบอร์ด):</label>
@@ -2658,16 +2855,16 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                     </div>
                     <div>
                       <label className="block text-xs font-bold mb-1 font-hand">สถานะงาน:</label>
-                      <select
+                      <CustomSelect
                         value={jobStatus}
-                        onChange={(e) => setJobStatus(e.target.value)}
-                        className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                      >
-                        <option value="ยังไม่เริ่ม">💤 ยังไม่เริ่ม (รอคิว)</option>
-                        <option value="กำลังดำเนินการ">⚡ กำลังดำเนินการ (กำลังทำ)</option>
-                        <option value="เสร็จสิ้น">✓ เสร็จสิ้น (เสร็จแล้ว)</option>
-                        <option value="เสร็จสิ้นปิดงานแล้ว">📁 เสร็จสิ้นปิดงานแล้ว</option>
-                      </select>
+                        onChange={(val) => setJobStatus(val)}
+                        options={[
+                          { value: 'ยังไม่เริ่ม', label: '💤 ยังไม่เริ่ม (รอคิว)' },
+                          { value: 'กำลังดำเนินการ', label: '⚡ กำลังดำเนินการ (กำลังทำ)' },
+                          { value: 'เสร็จสิ้น', label: '✓ เสร็จสิ้น (เสร็จแล้ว)' },
+                          { value: 'เสร็จสิ้นปิดงานแล้ว', label: '📁 เสร็จสิ้นปิดงานแล้ว' }
+                        ]}
+                      />
                     </div>
                     <div>
                       <label className="block text-xs font-bold mb-1 font-hand">วันที่เริ่มงาน:</label>

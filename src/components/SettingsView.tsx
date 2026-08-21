@@ -2,8 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { 
   User, LogOut, Sun, Moon, Info, ShieldAlert, BookOpen,
-  Briefcase, Plus, Trash2, Tag
+  Briefcase, Plus, Trash2, Tag, FileSpreadsheet, Copy, Check
 } from 'lucide-react';
+import { 
+  getGoogleSheetWebhookUrl, 
+  setGoogleSheetWebhookUrl, 
+  GOOGLE_APPS_SCRIPT_SAMPLE 
+} from '../lib/googleSheetSync';
 
 interface SettingsViewProps {
   userId: string;
@@ -24,6 +29,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ userId, onSignOut })
   const [newChannelName, setNewChannelName] = useState('');
   const [newServiceName, setNewServiceName] = useState('');
   const [updating, setUpdating] = useState(false);
+
+  // Google Sheets Webhook States
+  const [webhookUrl, setWebhookUrlState] = useState<string>(() => getGoogleSheetWebhookUrl());
+  const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
+  const [copiedScript, setCopiedScript] = useState<boolean>(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -313,6 +323,72 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ userId, onSignOut })
               <div>
                 เมื่อตั้งค่าแล้ว จะไม่มีใครสามารถสมัครสมาชิกผ่านหน้าจอแอปนี้ได้อีก และข้อมูลของคุณทั้งหมดในฐานข้อมูลจะมีความปลอดภัยสูงสุด มีแต่คุณเท่านั้นที่สามารถ Login เข้ามาจดบันทึกได้ครับ
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 📊 Google Sheets Webhook Configuration Card */}
+        <div className="bg-paper p-6 sketch-border shadow-sketch transform rotate-0.5 space-y-4 md:col-span-2">
+          <h3 className="text-xl font-extrabold font-hand border-b border-dashed border-neutral-300 pb-2 flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
+            <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+            ตั้งค่าการซิงค์ข้อมูลกับ Google Sheet (Google Apps Script Webhook)
+          </h3>
+
+          <div className="space-y-4 font-hand text-sm leading-relaxed">
+            <p className="text-xs text-pencil-muted">
+              นำ **Google Apps Script Webhook URL** จาก Google Sheet ของคุณมาวางที่นี่ เพื่อให้ปุ่ม "ซิงค์ไป Google Sheet" ส่งข้อมูลงานเสริมทั้งหมดไปอัปเดตบนตารางชีทให้อัตโนมัติทันที
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="url"
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrlState(e.target.value)}
+                placeholder="https://script.google.com/macros/s/AKfycb.../exec"
+                className="flex-grow p-2.5 bg-paper dark:bg-neutral-800 border-2 border-pencil rounded-md text-xs font-hand font-bold sketch-border-sm"
+              />
+              <button
+                onClick={() => {
+                  setGoogleSheetWebhookUrl(webhookUrl);
+                  setSavedSuccess(true);
+                  setTimeout(() => setSavedSuccess(false), 2500);
+                }}
+                className="sketch-button bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded text-xs font-hand font-bold shadow-sketch-sm justify-center whitespace-nowrap"
+              >
+                {savedSuccess ? '✓ บันทึกสำเร็จ!' : 'บันทึก Webhook URL'}
+              </button>
+            </div>
+
+            {/* Google Apps Script instructions & Copy Code */}
+            <div className="p-4 bg-emerald-50/50 dark:bg-neutral-800/60 sketch-border-sm space-y-3 text-xs">
+              <div className="flex justify-between items-center border-b border-dashed border-emerald-300 pb-2">
+                <span className="font-extrabold text-emerald-950 dark:text-emerald-200">
+                  📜 โค้ด Google Apps Script (สำหรับวางใน Google Sheet):
+                </span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_SAMPLE);
+                    setCopiedScript(true);
+                    setTimeout(() => setCopiedScript(false), 2500);
+                  }}
+                  className="px-3 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 rounded sketch-border-sm font-hand font-bold flex items-center gap-1.5 transition-colors"
+                >
+                  {copiedScript ? <Check className="w-3.5 h-3.5 text-emerald-700" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedScript ? 'คัดลอกสำเร็จ!' : 'คัดลอกโค้ดทั้งหมด'}</span>
+                </button>
+              </div>
+
+              <ol className="list-decimal list-inside space-y-1 text-emerald-950 dark:text-emerald-300 leading-relaxed">
+                <li>เปิด Google Sheet ของคุณ ➔ เมนู <strong>ส่วนขยาย (Extensions)</strong> ➔ <strong>Apps Script</strong></li>
+                <li>ลบโค้ดเดิมทั้งหมด แล้วกดวางโค้ดที่คัดลอกจากปุ่มด้านบนนี้ลงไป</li>
+                <li>กดปุ่ม <strong>ทำให้ใช้งานได้อย่างเป็นทางการ (Deploy)</strong> ➔ <strong>การทำรายการจัดส่งใหม่ (New deployment)</strong></li>
+                <li>เลือกประเภท <strong>แอปเว็บ (Web app)</strong> ➔ ตั้งค่า <em>"ผู้มีสิทธิ์เข้าถึง (Who has access)"</em> เป็น <strong>ทุกคน (Anyone)</strong></li>
+                <li>กด Deploy แล้วคัดลอก <strong>URL ของแอปเว็บ (Web app URL)</strong> มาวางในช่องด้านบนนี้ แล้วกดบันทึกครับ!</li>
+              </ol>
+
+              <pre className="p-3 bg-neutral-900 text-emerald-400 text-[10px] font-mono rounded max-h-44 overflow-y-auto mt-2">
+                {GOOGLE_APPS_SCRIPT_SAMPLE}
+              </pre>
             </div>
           </div>
         </div>

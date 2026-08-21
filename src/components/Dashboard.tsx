@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Calendar, CheckSquare, DollarSign, Loader2, AlertCircle, Sparkles } from 'lucide-react';
+import { Calendar, CheckSquare, DollarSign, Loader2, AlertCircle, Sparkles, FileSpreadsheet } from 'lucide-react';
+import { syncJobsToGoogleSheet, getGoogleSheetWebhookUrl } from '../lib/googleSheetSync';
 
 interface DashboardProps {
   userId: string;
@@ -111,6 +112,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ userId, onNavigate }) => {
     }
   };
 
+  const [syncingSheet, setSyncingSheet] = useState(false);
+
+  const handleDashboardGSheetSync = async () => {
+    const webhookUrl = getGoogleSheetWebhookUrl();
+    if (!webhookUrl) {
+      alert('ยังไม่ได้ตั้งค่า Google Sheets Webhook URL กรุณากดตั้งค่าที่หน้า "งานเสริม" หรือหน้า "ตั้งค่า" ก่อนใช้งานครับ');
+      return;
+    }
+
+    try {
+      setSyncingSheet(true);
+      const { data: jobs } = await supabase.from('freelance_jobs').select('*').eq('user_id', userId);
+      const { data: channels } = await supabase.from('freelance_channels').select('*').eq('user_id', userId);
+      const res = await syncJobsToGoogleSheet(jobs || [], channels || [], webhookUrl);
+      alert(res.message);
+    } catch (err: any) {
+      alert('เกิดข้อผิดพลาดในการซิงค์: ' + (err.message || 'ไม่ทราบสาเหตุ'));
+    } finally {
+      setSyncingSheet(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
@@ -133,13 +156,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ userId, onNavigate }) => {
               {getTodayDateString()}
             </h2>
           </div>
-          <button
-            onClick={fetchDashboardData}
-            className="sketch-button bg-amber-50 text-pencil text-xs md:text-sm rounded-md sketch-border-sm shadow-sketch-sm mt-2 md:mt-0"
-          >
-            <Sparkles className="w-3.5 h-3.5 md:w-4 md:h-4 text-amber-500" />
-            <span className="font-hand">ซิงค์บันทึก</span>
-          </button>
+          <div className="flex gap-2 mt-2 md:mt-0">
+            <button
+              onClick={fetchDashboardData}
+              className="sketch-button bg-amber-50 text-pencil text-xs md:text-sm rounded-md sketch-border-sm shadow-sketch-sm"
+              title="รีเฟรชข้อมูลแดชบอร์ด"
+            >
+              <Sparkles className="w-3.5 h-3.5 md:w-4 md:h-4 text-amber-500" />
+              <span className="font-hand">ซิงค์บันทึก</span>
+            </button>
+            <button
+              onClick={handleDashboardGSheetSync}
+              disabled={syncingSheet}
+              className="sketch-button bg-emerald-50 text-emerald-900 hover:bg-emerald-100 text-xs md:text-sm rounded-md sketch-border-sm shadow-sketch-sm"
+              title="ซิงค์ข้อมูลงานเสริมไปยัง Google Sheet"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 md:w-4 md:h-4 text-emerald-600" />
+              <span className="font-hand">{syncingSheet ? 'ซิงค์...' : 'ซิงค์ Google Sheet'}</span>
+            </button>
+          </div>
         </div>
       </div>
 
