@@ -1,4 +1,5 @@
 // Google Sheets Sync Helper Utilities
+import { formatChatUrl } from './chatUtils';
 
 export const GSHEET_WEBHOOK_STORAGE_KEY = 'lifecycle_gsheet_webhook_url';
 
@@ -66,7 +67,7 @@ export const syncJobsToGoogleSheet = async (jobs: any[], channels: any[], custom
         no: index + 1,
         link: link,
         account_name: job.account_name || job.title || '',
-        client_chat: job.client_chat_url || job.client_name || '',
+        client_chat: formatChatUrl(job.client_chat_url) || job.client_name || '',
         platform: job.platform || '',
         service_type: job.service_type || '',
         price: price,
@@ -180,7 +181,7 @@ export const downloadJobsAsCSV = (jobs: any[], _channels: any[]): void => {
     return [
       `"${(link).replace(/"/g, '""')}"`,
       `"${(job.account_name || job.title || '').replace(/"/g, '""')}"`,
-      `"${(job.client_chat_url || job.client_name || '').replace(/"/g, '""')}"`,
+      `"${(formatChatUrl(job.client_chat_url) || job.client_name || '').replace(/"/g, '""')}"`,
       `"${(job.platform || '').replace(/"/g, '""')}"`,
       `"${(job.service_type || '').replace(/"/g, '""')}"`,
       price,

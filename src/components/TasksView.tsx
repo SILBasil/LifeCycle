@@ -14,6 +14,7 @@ import {
   setGoogleSheetWebhookUrl,
   GOOGLE_APPS_SCRIPT_SAMPLE 
 } from '../lib/googleSheetSync';
+import { formatChatUrl } from '../lib/chatUtils';
 
 interface TasksViewProps {
   userId: string;
@@ -368,7 +369,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
         title: jobTitle.trim(),
         channel_id: selectedChannelId || null,
         client_name: clientName.trim() || null,
-        client_chat_url: clientChatUrl.trim() || null,
+        client_chat_url: clientChatUrl.trim() ? formatChatUrl(clientChatUrl) : null,
         price: Number(price) || 0,
         cost: Number(cost) || 0,
         start_date: startDate || new Date().toISOString().split('T')[0],
@@ -442,7 +443,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
         title: jobTitle.trim(),
         channel_id: selectedChannelId || null,
         client_name: clientName.trim() || null,
-        client_chat_url: clientChatUrl.trim() || null,
+        client_chat_url: clientChatUrl.trim() ? formatChatUrl(clientChatUrl) : null,
         price: Number(price) || 0,
         cost: Number(cost) || 0,
         start_date: startDate,
@@ -912,15 +913,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
   const handleChatUrlChange = (value: string) => {
     let cleanVal = value.trim();
     if (cleanVal) {
-      // Check if it is a pure numeric ID (e.g. 123456)
-      if (/^\d+$/.test(cleanVal)) {
-        cleanVal = `https://chat.fastwork.co/message/${cleanVal}`;
-      } else if (cleanVal.toLowerCase().startsWith('message/')) {
-        const id = cleanVal.split('/')[1];
-        if (id) {
-          cleanVal = `https://chat.fastwork.co/message/${id}`;
-        }
-      }
+      cleanVal = formatChatUrl(cleanVal);
     }
     setClientChatUrl(cleanVal);
   };
@@ -1384,7 +1377,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                             type="text"
                             value={clientChatUrl}
                             onChange={(e) => handleChatUrlChange(e.target.value)}
-                            placeholder="วางลิงก์ หรือพิมพ์แค่ ID เช่น 123456"
+                            placeholder="วางลิงก์ หรือพิมพ์แค่ ID เช่น rr43tfs, 123456"
                             className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
                           />
                         </div>
@@ -1576,7 +1569,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                             type="text"
                             value={clientChatUrl}
                             onChange={(e) => handleChatUrlChange(e.target.value)}
-                            placeholder="วางลิงก์ หรือพิมพ์แค่ ID เช่น 123456"
+                            placeholder="วางลิงก์ หรือพิมพ์แค่ ID เช่น rr43tfs, 123456"
                             className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
                           />
                         </div>
@@ -1913,7 +1906,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                           )}
                           {job.client_chat_url && (
                             <a 
-                              href={job.client_chat_url} 
+                              href={formatChatUrl(job.client_chat_url)} 
                               target="_blank" 
                               rel="noreferrer" 
                               className="flex items-center gap-1 font-hand text-indigo-600 hover:underline"
@@ -2127,7 +2120,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                               )}
                               {job.client_chat_url && (
                                 <a 
-                                  href={job.client_chat_url} 
+                                  href={formatChatUrl(job.client_chat_url)} 
                                   target="_blank" 
                                   rel="noreferrer" 
                                   className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-300 hover:bg-indigo-100 text-[10px] inline-flex items-center gap-0.5 font-bold"
@@ -2584,7 +2577,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                             type="text"
                             value={clientChatUrl}
                             onChange={(e) => handleChatUrlChange(e.target.value)}
-                            placeholder="วางลิงก์ หรือพิมพ์แค่ ID เช่น 123456"
+                            placeholder="วางลิงก์ หรือพิมพ์แค่ ID เช่น rr43tfs, 123456"
                             className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
                           />
                         </div>
@@ -2811,7 +2804,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                             type="text"
                             value={clientChatUrl}
                             onChange={(e) => handleChatUrlChange(e.target.value)}
-                            placeholder="วางลิงก์ หรือพิมพ์แค่ ID เช่น 123456"
+                            placeholder="วางลิงก์ หรือพิมพ์แค่ ID เช่น rr43tfs, 123456"
                             className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
                           />
                         </div>
