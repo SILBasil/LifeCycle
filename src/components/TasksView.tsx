@@ -16,7 +16,7 @@ import {
   GOOGLE_APPS_SCRIPT_SAMPLE 
 } from '../lib/googleSheetSync';
 import { formatChatUrl } from '../lib/chatUtils';
-import { fetchSocialCount, getAppDeepLink, JobLinkItem } from '../lib/socialFetcher';
+import { fetchSocialCount, getAppDeepLink, type JobLinkItem } from '../lib/socialFetcher';
 import { OCRScannerModal } from './OCRScannerModal';
 
 function parseJobLinks(notes: string | null | undefined): JobLinkItem[] | null {
@@ -756,7 +756,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
         if (res.success && typeof res.count === 'number') {
           const currentVal = res.count;
           const done = Math.max(0, currentVal - (Number(link.start_count) || 0));
-          const status = done >= (Number(link.target_count) || 0) && (Number(link.target_count) || 0) > 0 ? 'completed' : 'in_progress';
+          const status: 'pending' | 'in_progress' | 'completed' = done >= (Number(link.target_count) || 0) && (Number(link.target_count) || 0) > 0 ? 'completed' : 'in_progress';
           updatedLinks[i] = { ...link, current_count: currentVal, done, status };
           successCount++;
         }
@@ -804,7 +804,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
     const updatedLinks = links.map(l => {
       if (l.id === linkId) {
         const done = Math.max(0, currentVal - (Number(l.start_count) || 0));
-        const status = done >= (Number(l.target_count) || 0) && (Number(l.target_count) || 0) > 0 ? 'completed' : 'in_progress';
+        const status: 'pending' | 'in_progress' | 'completed' = done >= (Number(l.target_count) || 0) && (Number(l.target_count) || 0) > 0 ? 'completed' : 'in_progress';
         return { ...l, current_count: currentVal, done, status };
       }
       return l;

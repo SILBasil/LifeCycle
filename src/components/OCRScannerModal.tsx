@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Camera, Upload, Check, AlertCircle, Loader2, X, Image as ImageIcon } from 'lucide-react';
-import { recognizeCountFromImage, OCRResult } from '../lib/ocrUtils';
+import { recognizeCountFromImage, type OCRResult } from '../lib/ocrUtils';
 
 interface OCRScannerModalProps {
   isOpen: boolean;
