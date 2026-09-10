@@ -4,7 +4,8 @@ import {
   ListTodo, Plus, Trash2, Calendar, Folder, Loader2, 
   Briefcase, Link as LinkIcon, 
   MessageSquare, ExternalLink, AlertCircle,
-  Edit3, X, Tag, Search, FileSpreadsheet, Download, Copy, Check
+  Edit3, X, Tag, Search, FileSpreadsheet, Download, Copy, Check,
+  Camera, RefreshCw, Layers
 } from 'lucide-react';
 import { CustomSelect } from './CustomSelect';
 import { 
@@ -15,6 +16,27 @@ import {
   GOOGLE_APPS_SCRIPT_SAMPLE 
 } from '../lib/googleSheetSync';
 import { formatChatUrl } from '../lib/chatUtils';
+import { fetchSocialCount, getAppDeepLink, JobLinkItem } from '../lib/socialFetcher';
+import { OCRScannerModal } from './OCRScannerModal';
+
+function parseJobLinks(notes: string | null | undefined): JobLinkItem[] | null {
+  if (!notes) return null;
+  const match = notes.match(/\[MULTILINKS\]([\s\S]*?)\[\/MULTILINKS\]/);
+  if (match && match[1]) {
+    try {
+      return JSON.parse(match[1]);
+    } catch (_) {
+      return null;
+    }
+  }
+  return null;
+}
+
+function serializeJobLinks(cleanNotes: string, links: JobLinkItem[]): string {
+  const strippedNotes = (cleanNotes || '').replace(/\[MULTILINKS\][\s\S]*?\[\/MULTILINKS\]/g, '').trim();
+  if (!links || links.length === 0) return strippedNotes;
+  return `${strippedNotes}\n\n[MULTILINKS]${JSON.stringify(links)}[/MULTILINKS]`.trim();
+}
 
 interface TasksViewProps {
   userId: string;
@@ -178,6 +200,22 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
   const [jobNotes, setJobNotes] = useState('');
   const [smmProviderInfo, setSmmProviderInfo] = useState('');
   const [jobStatus, setJobStatus] = useState<string>('กำลังดำเนินการ');
+
+  // Multi-link & OCR states
+  const [ocrModalOpen, setOcrModalOpen] = useState(false);
+  const [ocrModalConfig, setOcrModalConfig] = useState<{
+    title: string;
+    fieldLabel: string;
+    onConfirm: (count: number) => void;
+  }>({
+    title: 'อ่านยอดจากรูปแคปหน้าจอ (OCR)',
+    fieldLabel: 'ยอดที่ตรวจพบ',
+    onConfirm: () => {}
+  });
+  const [isMultiLink, setIsMultiLink] = useState(false);
+  const [multiLinks, setMultiLinks] = useState<JobLinkItem[]>([]);
+  const [fetchingStartCount, setFetchingStartCount] = useState(false);
+  const [expandedMultiLinkJobs, setExpandedMultiLinkJobs] = useState<Set<string>>(new Set());
 
   // Search state for freelance jobs
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -364,6 +402,16 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
     try {
       setJobsSaving(true);
       
+      let finalStartCount = Number(smmStartCount) || 0;
+      let finalTargetCount = Number(smmTargetCount) || 0;
+      let finalNotes = jobNotes.trim();
+
+      if (isMultiLink && multiLinks.length > 0) {
+        finalStartCount = multiLinks.reduce((sum, l) => sum + (Number(l.start_count) || 0), 0);
+        finalTargetCount = multiLinks.reduce((sum, l) => sum + (Number(l.target_count) || 0), 0);
+        finalNotes = serializeJobLinks(jobNotes, multiLinks);
+      }
+
       const payload: any = {
         user_id: userId,
         title: jobTitle.trim(),
@@ -375,15 +423,15 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
         start_date: startDate || new Date().toISOString().split('T')[0],
         end_date: endDate || null,
         status: jobStatus === 'ยังไม่เริ่ม' ? 'กำลังดำเนินการ' : jobStatus,
-        notes: jobNotes.trim() || null,
+        notes: finalNotes || null,
         category: jobCategory,
         // SMM fields
         link: smmLink.trim() || null,
         account_name: smmAccountName.trim() || null,
         platform: smmPlatform || null,
         service_type: smmServiceType || null,
-        start_count: Number(smmStartCount) || 0,
-        target_count: Number(smmTargetCount) || 0,
+        start_count: finalStartCount,
+        target_count: finalTargetCount,
         foreign_added: Number(smmForeignAdded) || 0,
         foreign_gift: Number(smmForeignGift) || 0,
         foreign_done: Number(smmForeignDone) || 0,
@@ -421,6 +469,8 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
       setJobNotes('');
       setSmmProviderInfo('');
       setJobStatus('กำลังดำเนินการ');
+      setIsMultiLink(false);
+      setMultiLinks([]);
       setShowAddJobForm(false);
       
       fetchJobs();
@@ -439,6 +489,16 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
     try {
       setJobsSaving(true);
       
+      let finalStartCount = Number(smmStartCount) || 0;
+      let finalTargetCount = Number(smmTargetCount) || 0;
+      let finalNotes = jobNotes.trim();
+
+      if (isMultiLink && multiLinks.length > 0) {
+        finalStartCount = multiLinks.reduce((sum, l) => sum + (Number(l.start_count) || 0), 0);
+        finalTargetCount = multiLinks.reduce((sum, l) => sum + (Number(l.target_count) || 0), 0);
+        finalNotes = serializeJobLinks(jobNotes, multiLinks);
+      }
+
       const payload: any = {
         title: jobTitle.trim(),
         channel_id: selectedChannelId || null,
@@ -449,15 +509,15 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
         start_date: startDate,
         end_date: endDate || null,
         status: jobStatus,
-        notes: jobNotes.trim() || null,
+        notes: finalNotes || null,
         category: jobCategory,
         // SMM fields
         link: smmLink.trim() || null,
         account_name: smmAccountName.trim() || null,
         platform: smmPlatform || null,
         service_type: smmServiceType || null,
-        start_count: Number(smmStartCount) || 0,
-        target_count: Number(smmTargetCount) || 0,
+        start_count: finalStartCount,
+        target_count: finalTargetCount,
         foreign_added: Number(smmForeignAdded) || 0,
         foreign_gift: Number(smmForeignGift) || 0,
         foreign_done: Number(smmForeignDone) || 0,
@@ -502,10 +562,10 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
       setJobNotes('');
       setSmmProviderInfo('');
       setJobStatus('กำลังดำเนินการ');
-      
-      fetchJobs();
+      setIsMultiLink(false);
+      setMultiLinks([]);
     } catch (err) {
-      alert('เกิดข้อผิดพลาดในการแก้ไขงาน');
+      alert('เกิดข้อผิดพลาดในการอัปเดตงาน');
       console.error('Error updating freelance job:', err);
     } finally {
       setJobsSaving(false);
@@ -535,7 +595,20 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
     setSmmThaiAdded(job.thai_added ? String(job.thai_added) : '');
     setSmmThaiGift(job.thai_gift ? String(job.thai_gift) : '');
     setSmmThaiDone(job.thai_done ? String(job.thai_done) : '');
-    setJobNotes(job.notes || '');
+    
+    // Check multi-link in notes
+    const parsedLinks = parseJobLinks(job.notes);
+    if (parsedLinks && parsedLinks.length > 0) {
+      setIsMultiLink(true);
+      setMultiLinks(parsedLinks);
+      const cleanNotes = (job.notes || '').replace(/\[MULTILINKS\][\s\S]*?\[\/MULTILINKS\]/g, '').trim();
+      setJobNotes(cleanNotes);
+    } else {
+      setIsMultiLink(false);
+      setMultiLinks([]);
+      setJobNotes(job.notes || '');
+    }
+
     setSmmProviderInfo(job.provider_info || '');
     setJobStatus(job.status || 'กำลังดำเนินการ');
     const currentFollowers = (Number(job.start_count) || 0) + (Number(job.foreign_done) || 0) + (Number(job.thai_done) || 0);
@@ -598,74 +671,172 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
     }
   };
 
-  const handleAutoFetchCount = (jobId: string, profileUrl: string) => {
+  // 1. ดึงยอดเริ่มต้น (Start Count) - ลงเฉพาะยอดเริ่มเท่านั้น
+  const handleFetchStartCount = async (url: string, linkIndex?: number) => {
+    if (!url) {
+      alert('กรุณาระบุลิงก์ก่อนดึงยอด');
+      return;
+    }
+    setFetchingStartCount(true);
+    try {
+      const res = await fetchSocialCount(url);
+      if (res.success && typeof res.count === 'number') {
+        if (typeof linkIndex === 'number') {
+          setMultiLinks(prev => prev.map((l, i) => i === linkIndex ? { ...l, start_count: res.count! } : l));
+        } else {
+          setSmmStartCount(String(res.count));
+        }
+        alert(`ดึงยอดเริ่มต้นสำเร็จ: ${res.count.toLocaleString()}`);
+      } else {
+        alert(`ไม่สามารถดึงยอดเริ่มต้นได้: ${res.error || 'กรุณาลองใช้ปุ่มเปิดแอปหรือสแกนรูปแคปหน้าจอ'}`);
+      }
+    } catch (e: any) {
+      alert('เกิดข้อผิดพลาด: ' + (e.message || 'ไม่สามารถติดต่อเซิร์ฟเวอร์ได้'));
+    } finally {
+      setFetchingStartCount(false);
+    }
+  };
+
+  // 2. ดึงยอดปัจจุบันอัตโนมัติ (Current Count) ผ่าน Vercel Serverless
+  const handleAutoFetchCount = async (jobId: string, profileUrl: string, linkId?: string) => {
     if (!profileUrl) {
-      alert("ไม่พบลิงก์โปรไฟล์สำหรับดึงข้อมูล");
+      alert("ไม่พบลิงก์สำหรับดึงข้อมูล");
       return;
     }
 
+    const fetchKey = linkId ? `${jobId}-${linkId}` : jobId;
     setFetchingJobIds(prev => {
       const next = new Set(prev);
-      next.add(jobId);
+      next.add(fetchKey);
       return next;
     });
 
-    let timeoutId: number;
-
-    const onResponse = async (event: MessageEvent) => {
-      if (event.data && event.data.type === "SMM_EXTENSION_RESPONSE" && event.data.url === profileUrl) {
-        window.removeEventListener("message", onResponse);
-        clearTimeout(timeoutId);
-
-        if (event.data.error) {
-          alert("เกิดข้อผิดพลาดในการดึงข้อมูล: " + event.data.error);
-          setFetchingJobIds(prev => {
-            const next = new Set(prev);
-            next.delete(jobId);
-            return next;
-          });
-          return;
-        }
-
-        const freshCount = event.data.count;
-        if (freshCount !== null && freshCount !== undefined) {
-          await handleUpdateCurrentCount(jobId, freshCount);
-        }
-
-        setFetchingJobIds(prev => {
-          const next = new Set(prev);
-          next.delete(jobId);
-          return next;
-        });
-
-        if (freshCount !== null && freshCount !== undefined) {
-          setTimeout(() => {
-            alert(`ดึงยอดผู้ติดตามสำเร็จ: ${freshCount.toLocaleString()} คน!`);
-          }, 50);
+    try {
+      const res = await fetchSocialCount(profileUrl);
+      if (res.success && typeof res.count === 'number') {
+        if (linkId) {
+          await handleUpdateMultiLinkCount(jobId, linkId, res.count);
         } else {
-          alert("ไม่พบยอดผู้ติดตามจากการค้นหา");
+          await handleUpdateCurrentCount(jobId, res.count);
         }
+        alert(`ดึงยอดสำเร็จ: ${res.count.toLocaleString()}!`);
+      } else {
+        alert(`ดึงยอดอัตโนมัติไม่สำเร็จ: ${res.error || 'กรุณาลองใช้ปุ่มเปิดแอปหรือสแกนรูปแคปหน้าจอ'}`);
       }
-    };
-
-    // ตั้งเวลา timeout 20 วินาที เพื่อรองรับการเปิดหน้าเว็บซ่อนเบื้องหลังของ Extension
-    timeoutId = window.setTimeout(() => {
-      window.removeEventListener("message", onResponse);
+    } catch (e: any) {
+      alert('เกิดข้อผิดพลาด: ' + (e.message || 'ไม่สามารถติดต่อเซิร์ฟเวอร์ได้'));
+    } finally {
       setFetchingJobIds(prev => {
         const next = new Set(prev);
-        next.delete(jobId);
+        next.delete(fetchKey);
         return next;
       });
-      alert("ไม่สามารถติดต่อ Extension ได้ กรุณาติดตั้งหรือเปิดใช้ Chrome Extension 'LifeCycle SMM Auto-Fetcher'");
-    }, 20000);
-
-    window.addEventListener("message", onResponse);
-
-    // ส่งข้อมูลไปหา Extension
-    window.postMessage({ type: "SMM_EXTENSION_REQUEST", url: profileUrl }, "*");
+    }
   };
 
+  // 3. ดึงยอดทุกลิงก์พร้อมกันสำหรับงาน Multi-link (Batch Fetch)
+  const handleBatchFetchMultiLinks = async (job: any) => {
+    const links = parseJobLinks(job.notes);
+    if (!links || links.length === 0) return;
 
+    setFetchingJobIds(prev => {
+      const next = new Set(prev);
+      next.add(job.id);
+      return next;
+    });
+
+    let successCount = 0;
+    const updatedLinks = [...links];
+
+    for (let i = 0; i < updatedLinks.length; i++) {
+      const link = updatedLinks[i];
+      if (!link.url) continue;
+      try {
+        const res = await fetchSocialCount(link.url);
+        if (res.success && typeof res.count === 'number') {
+          const currentVal = res.count;
+          const done = Math.max(0, currentVal - (Number(link.start_count) || 0));
+          const status = done >= (Number(link.target_count) || 0) && (Number(link.target_count) || 0) > 0 ? 'completed' : 'in_progress';
+          updatedLinks[i] = { ...link, current_count: currentVal, done, status };
+          successCount++;
+        }
+      } catch (_) {}
+    }
+
+    const totalDone = updatedLinks.reduce((sum, l) => sum + (Number(l.done) || 0), 0);
+    const newNotes = serializeJobLinks(job.notes, updatedLinks);
+
+    const updateData: any = { notes: newNotes };
+    if (job.service_type === 'ไทย') {
+      updateData.thai_done = totalDone;
+    } else if (job.service_type === 'ต่างชาติ') {
+      updateData.foreign_done = totalDone;
+    } else {
+      updateData.thai_done = totalDone;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('freelance_jobs')
+        .update(updateData)
+        .eq('id', job.id)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      setJobs(jobs.map(j => j.id === job.id ? { ...j, ...updateData } : j));
+      alert(`ดึงยอดครบแล้ว: สำเร็จ ${successCount}/${updatedLinks.length} ลิงก์`);
+    } catch (err) {
+      console.error('Batch fetch error:', err);
+    } finally {
+      setFetchingJobIds(prev => {
+        const next = new Set(prev);
+        next.delete(job.id);
+        return next;
+      });
+    }
+  };
+
+  // 4. อัปเดตยอดของ Multi-link รายชิ้น
+  const handleUpdateMultiLinkCount = async (jobId: string, linkId: string, currentVal: number) => {
+    const job = jobs.find(j => j.id === jobId);
+    if (!job) return;
+    const links = parseJobLinks(job.notes) || [];
+    const updatedLinks = links.map(l => {
+      if (l.id === linkId) {
+        const done = Math.max(0, currentVal - (Number(l.start_count) || 0));
+        const status = done >= (Number(l.target_count) || 0) && (Number(l.target_count) || 0) > 0 ? 'completed' : 'in_progress';
+        return { ...l, current_count: currentVal, done, status };
+      }
+      return l;
+    });
+
+    const totalDone = updatedLinks.reduce((sum, l) => sum + (Number(l.done) || 0), 0);
+    const newNotes = serializeJobLinks(job.notes, updatedLinks);
+
+    const updateData: any = { notes: newNotes };
+    if (job.service_type === 'ไทย') {
+      updateData.thai_done = totalDone;
+    } else if (job.service_type === 'ต่างชาติ') {
+      updateData.foreign_done = totalDone;
+    } else {
+      updateData.thai_done = totalDone;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('freelance_jobs')
+        .update(updateData)
+        .eq('id', jobId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      setJobs(jobs.map(j => j.id === jobId ? { ...j, ...updateData } : j));
+    } catch (err) {
+      console.error('Error updating multi-link count:', err);
+    }
+  };
+
+  // 5. อัปเดตยอดงานเดี่ยว (คำนวณ done = current - start โดยไม่แตะต้อง start_count)
   const handleUpdateCurrentCount = async (jobId: string, currentCountVal: number) => {
     const job = jobs.find(j => j.id === jobId);
     if (!job) return;
@@ -1281,33 +1452,228 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                   {jobCategory === 'fastwork_smm' ? (
                     /* 🚀 SMM TEMPLATE FIELDS */
                     <div className="space-y-4">
-                      {/* SMM Link Row */}
-                      <div className="p-3 bg-amber-50/40 border border-dashed border-amber-300 rounded space-y-2">
-                        <span className="text-[10px] font-bold text-amber-800 font-hand block">
-                          💡 วางลิงก์ก่อนเพื่อดึงชื่อผู้ใช้และตั้งชื่อลูกค้า/ชื่องานให้อัตโนมัติ
-                        </span>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-bold mb-1 font-hand">ลิงก์โปรไฟล์ / ลิงก์โพสต์ลูกค้า:</label>
-                            <input
-                              type="url"
-                              value={smmLink}
-                              onChange={(e) => handleSmmLinkChange(e.target.value)}
-                              placeholder="วางลิงก์ IG, TikTok เพื่อดึงชื่อผู้ใช้อัตโนมัติ"
-                              className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold mb-1 font-hand">ชื่อบัญชีลูกค้า (Handle):</label>
-                            <input
-                              type="text"
-                              value={smmAccountName}
-                              onChange={(e) => setSmmAccountName(e.target.value)}
-                              placeholder="ดึงจากลิงก์ หรือพิมพ์เอง เช่น natachaseq"
-                              className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                            />
-                          </div>
+                      {/* SMM Link Row & Action Buttons */}
+                      <div className="p-3 bg-amber-50/40 border border-dashed border-amber-300 rounded space-y-3">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                          <span className="text-[10px] font-bold text-amber-800 font-hand block">
+                            💡 วางลิงก์เพื่อดึงชื่อผู้ใช้ หรือกดดึงยอดเริ่มต้น/สแกนรูปแคปหน้าจอ
+                          </span>
+                          {/* Multi-link toggle button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = !isMultiLink;
+                              setIsMultiLink(next);
+                              if (next && multiLinks.length === 0) {
+                                setMultiLinks([
+                                  { id: '1', url: smmLink || '', start_count: Number(smmStartCount) || 0, target_count: Number(smmTargetCount) || 100, current_count: Number(smmStartCount) || 0, done: 0, status: 'pending' },
+                                  { id: '2', url: '', start_count: 0, target_count: 100, current_count: 0, done: 0, status: 'pending' }
+                                ]);
+                              }
+                            }}
+                            className={`px-2.5 py-1 text-xs rounded-md font-hand font-bold flex items-center gap-1 transition-all ${
+                              isMultiLink 
+                                ? 'bg-indigo-600 text-white shadow-xs' 
+                                : 'bg-white dark:bg-neutral-800 border border-pencil hover:bg-indigo-50 text-pencil'
+                            }`}
+                          >
+                            <Layers className="w-3.5 h-3.5" />
+                            {isMultiLink ? '✓ โหมดหลายลิงก์ (เปิดอยู่)' : '+ ใช้งานหลายลิงก์ (เช่น ปั๊มไลค์ 3-5 โพสต์)'}
+                          </button>
                         </div>
+
+                        {!isMultiLink ? (
+                          /* Single Link Mode */
+                          <div className="space-y-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-xs font-bold mb-1 font-hand">ลิงก์โปรไฟล์ / ลิงก์โพสต์ลูกค้า:</label>
+                                <input
+                                  type="url"
+                                  value={smmLink}
+                                  onChange={(e) => handleSmmLinkChange(e.target.value)}
+                                  placeholder="วางลิงก์ IG, TikTok เพื่อดึงชื่อผู้ใช้อัตโนมัติ"
+                                  className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold mb-1 font-hand">ชื่อบัญชีลูกค้า (Handle):</label>
+                                <input
+                                  type="text"
+                                  value={smmAccountName}
+                                  onChange={(e) => setSmmAccountName(e.target.value)}
+                                  placeholder="ดึงจากลิงก์ หรือพิมพ์เอง เช่น natachaseq"
+                                  className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Quick Actions for Link */}
+                            {smmLink && (
+                              <div className="flex flex-wrap items-center gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleFetchStartCount(smmLink)}
+                                  disabled={fetchingStartCount}
+                                  className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded text-xs font-hand font-bold flex items-center gap-1 shadow-sketch-sm"
+                                  title="ดึงยอดเริ่มต้นปัจจุบันลงช่องยอดเดิม"
+                                >
+                                  {fetchingStartCount ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                                  <span>🔍 ดึงยอดเริ่มต้น</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOcrModalConfig({
+                                      title: 'อ่านยอดเริ่มต้นจากรูปแคป (Start Count)',
+                                      fieldLabel: 'ยอดเริ่มต้นที่ตรวจพบ',
+                                      onConfirm: (cnt) => {
+                                        setSmmStartCount(String(cnt));
+                                      }
+                                    });
+                                    setOcrModalOpen(true);
+                                  }}
+                                  className="px-2.5 py-1 bg-sky-500 hover:bg-sky-600 text-white rounded text-xs font-hand font-bold flex items-center gap-1 shadow-sketch-sm"
+                                  title="เลือกหรือวางภาพแคปหน้าจอเพื่อดูดยอดตัวเลข"
+                                >
+                                  <Camera className="w-3 h-3" />
+                                  <span>📸 สแกนรูปแคป</span>
+                                </button>
+                                <a
+                                  href={getAppDeepLink(smmLink)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="px-2.5 py-1 bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 text-neutral-800 dark:text-neutral-200 rounded text-xs font-hand font-bold flex items-center gap-1 shadow-sketch-sm"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  <span>🚀 เปิดแอป</span>
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          /* Multi-Link Mode List */
+                          <div className="space-y-3 bg-white/70 dark:bg-neutral-900/70 p-3 rounded-lg border border-indigo-200 dark:border-indigo-900">
+                            <span className="text-xs font-bold text-indigo-900 dark:text-indigo-300 font-hand block">
+                              🔗 รายการลิงก์โพสต์ในงานนี้ ({multiLinks.length} ลิงก์):
+                            </span>
+                            
+                            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                              {multiLinks.map((item, idx) => (
+                                <div key={item.id} className="p-2.5 bg-neutral-50 dark:bg-neutral-800 rounded border border-pencil text-xs space-y-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-bold font-hand text-pencil-muted">โพสต์ #{idx + 1}:</span>
+                                    <div className="flex items-center gap-1">
+                                      {item.url && (
+                                        <>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleFetchStartCount(item.url, idx)}
+                                            className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded font-hand font-bold text-[10px] flex items-center gap-0.5"
+                                            title="ดึงยอดเริ่มของลิงก์นี้"
+                                          >
+                                            🔍 ดึงเริ่ม
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setOcrModalConfig({
+                                                title: `อ่านยอดเริ่มของโพสต์ #${idx + 1}`,
+                                                fieldLabel: 'ยอดเริ่มที่ตรวจพบ',
+                                                onConfirm: (cnt) => {
+                                                  setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, start_count: cnt } : l));
+                                                }
+                                              });
+                                              setOcrModalOpen(true);
+                                            }}
+                                            className="px-2 py-0.5 bg-sky-100 text-sky-900 rounded font-hand font-bold text-[10px] flex items-center gap-0.5"
+                                          >
+                                            📸 สแกน
+                                          </button>
+                                          <a
+                                            href={getAppDeepLink(item.url)}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="px-2 py-0.5 bg-neutral-200 text-neutral-800 rounded font-hand font-bold text-[10px] flex items-center gap-0.5"
+                                          >
+                                            🚀 เปิด
+                                          </a>
+                                        </>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (multiLinks.length <= 1) {
+                                            alert('ต้องมีอย่างน้อย 1 ลิงก์');
+                                            return;
+                                          }
+                                          setMultiLinks(prev => prev.filter((_, i) => i !== idx));
+                                        }}
+                                        className="text-red-500 hover:text-red-700 p-0.5 ml-1"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <div className="sm:col-span-2">
+                                      <input
+                                        type="url"
+                                        value={item.url}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, url: val } : l));
+                                        }}
+                                        placeholder="วางลิงก์โพสต์..."
+                                        className="w-full p-1.5 bg-transparent border border-pencil rounded text-xs font-hand"
+                                      />
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <div className="w-1/2">
+                                        <input
+                                          type="number"
+                                          value={item.start_count || ''}
+                                          onChange={(e) => {
+                                            const val = Number(e.target.value) || 0;
+                                            setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, start_count: val } : l));
+                                          }}
+                                          placeholder="ยอดเริ่ม"
+                                          className="w-full p-1.5 bg-transparent border border-pencil rounded text-xs font-hand"
+                                        />
+                                      </div>
+                                      <div className="w-1/2">
+                                        <input
+                                          type="number"
+                                          value={item.target_count || ''}
+                                          onChange={(e) => {
+                                            const val = Number(e.target.value) || 0;
+                                            setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, target_count: val } : l));
+                                          }}
+                                          placeholder="เป้าหมาย"
+                                          className="w-full p-1.5 bg-transparent border border-pencil rounded text-xs font-hand font-bold text-amber-700 dark:text-amber-400"
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMultiLinks(prev => [
+                                  ...prev,
+                                  { id: Math.random().toString(36).substring(2, 9), url: '', start_count: 0, target_count: 100, current_count: 0, done: 0, status: 'pending' }
+                                ]);
+                              }}
+                              className="w-full py-1.5 border-2 border-dashed border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 rounded font-hand font-bold text-xs flex items-center justify-center gap-1 transition-colors"
+                            >
+                              <Plus className="w-3.5 h-3.5" /> เพิ่มลิงก์โพสต์ถัดไป
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1918,99 +2284,229 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                       )}
 
                       {/* SMM Specific Metrics (Follower Counters) */}
-                      {isSMM && (
-                        <div className="p-3 bg-control/40 sketch-border-sm space-y-2 text-xs">
-                          <div className="flex justify-between items-center font-hand text-[10px] text-pencil-muted">
-                            <span>🚀 {job.platform || 'ig : ฟอล'} ({job.service_type || 'ผสม'})</span>
-                            <span>เดิม: {job.start_count?.toLocaleString()} ➔ เป้าหมาย: {calculations.totalTargetFollowers?.toLocaleString()}</span>
-                          </div>
+                      {isSMM && (() => {
+                        const jobLinks = parseJobLinks(job.notes);
+                        const hasMultiLinks = jobLinks && jobLinks.length > 0;
+                        const isExpanded = expandedMultiLinkJobs.has(job.id);
 
-                          {/* Progress bar */}
-                          <div className="space-y-1">
-                            <div className="flex justify-between font-hand text-[10px]">
-                              <span>ความคืบหน้าภาพรวม (+{calculations.totalDone} จากเป้า +{calculations.totalTargetToAdd})</span>
-                              <span className="font-bold">{calculations.progressPercent}%</span>
+                        return (
+                          <div className="p-3 bg-control/40 sketch-border-sm space-y-2 text-xs">
+                            <div className="flex justify-between items-center font-hand text-[10px] text-pencil-muted">
+                              <span>🚀 {job.platform || 'ig : ฟอล'} ({job.service_type || 'ผสม'})</span>
+                              <span>เดิม: {job.start_count?.toLocaleString()} ➔ เป้าหมาย: {calculations.totalTargetFollowers?.toLocaleString()}</span>
                             </div>
-                            <div className="w-full h-3 bg-neutral-200/50 sketch-border-sm overflow-hidden p-0.5">
-                              <div 
-                                className="h-full bg-amber-400 rounded-sm sketch-border-sm transition-all duration-300"
-                                style={{ width: `${calculations.progressPercent}%` }}
-                              ></div>
-                            </div>
-                            <div className="flex items-center justify-between gap-1.5 mt-1.5 text-[10px] font-hand">
-                              <span className="text-pencil-muted font-bold">
-                                ยอดจริงบน {job.platform?.toLowerCase().includes('tiktok') ? 'TikTok' : job.platform?.toLowerCase().includes('facebook') ? 'Facebook' : 'IG'} ปัจจุบัน:
-                              </span>
-                              <div className="flex items-center gap-1">
-                                <input
-                                  key={`${job.id}-${(Number(job.start_count) || 0) + (Number(job.foreign_done) || 0) + (Number(job.thai_done) || 0)}`}
-                                  type="number"
-                                  placeholder="ระบุยอดจริง..."
-                                  defaultValue={(Number(job.start_count) || 0) + (Number(job.foreign_done) || 0) + (Number(job.thai_done) || 0)}
-                                  onBlur={(e) => {
-                                    const val = Number(e.target.value);
-                                    if (val > 0) {
-                                      handleUpdateCurrentCount(job.id, val);
-                                    }
-                                  }}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                      const val = Number((e.target as HTMLInputElement).value);
-                                      if (val > 0) {
-                                        handleUpdateCurrentCount(job.id, val);
-                                        (e.target as HTMLInputElement).blur();
-                                      }
-                                    }
-                                  }}
-                                  className="w-20 px-1 py-0.5 text-center bg-transparent border border-pencil rounded text-[10px] font-extrabold focus:bg-control"
-                                  disabled={fetchingJobIds.has(job.id)}
-                                />
-                                {job.link && (
-                                  <button
-                                    onClick={() => handleAutoFetchCount(job.id, job.link)}
-                                    disabled={fetchingJobIds.has(job.id)}
-                                    className={`px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded border border-amber-300 font-hand text-[9px] flex items-center gap-0.5 font-bold shadow-sketch-sm ${
-                                      fetchingJobIds.has(job.id) ? 'opacity-70 cursor-not-allowed' : ''
-                                    }`}
-                                    title="ดึงยอดผู้ติดตามล่าสุดจากลิงก์อัตโนมัติ"
-                                  >
-                                    {fetchingJobIds.has(job.id) ? (
+
+                            {/* Progress bar */}
+                            <div className="space-y-1">
+                              <div className="flex justify-between font-hand text-[10px]">
+                                <span>ความคืบหน้าภาพรวม (+{calculations.totalDone} จากเป้า +{calculations.totalTargetToAdd})</span>
+                                <span className="font-bold">{calculations.progressPercent}%</span>
+                              </div>
+                              <div className="w-full h-3 bg-neutral-200/50 sketch-border-sm overflow-hidden p-0.5">
+                                <div 
+                                  className="h-full bg-amber-400 rounded-sm sketch-border-sm transition-all duration-300"
+                                  style={{ width: `${calculations.progressPercent}%` }}
+                                ></div>
+                              </div>
+
+                              {!hasMultiLinks ? (
+                                /* Single Link Controls */
+                                <div className="flex flex-wrap items-center justify-between gap-1.5 mt-1.5 text-[10px] font-hand">
+                                  <span className="text-pencil-muted font-bold">
+                                    ยอดจริงบน {job.platform?.toLowerCase().includes('tiktok') ? 'TikTok' : job.platform?.toLowerCase().includes('facebook') ? 'Facebook' : 'IG'}:
+                                  </span>
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    <input
+                                      key={`${job.id}-${(Number(job.start_count) || 0) + (Number(job.foreign_done) || 0) + (Number(job.thai_done) || 0)}`}
+                                      type="number"
+                                      placeholder="ระบุยอดจริง..."
+                                      defaultValue={(Number(job.start_count) || 0) + (Number(job.foreign_done) || 0) + (Number(job.thai_done) || 0)}
+                                      onBlur={(e) => {
+                                        const val = Number(e.target.value);
+                                        if (val > 0) {
+                                          handleUpdateCurrentCount(job.id, val);
+                                        }
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          const val = Number((e.target as HTMLInputElement).value);
+                                          if (val > 0) {
+                                            handleUpdateCurrentCount(job.id, val);
+                                            (e.target as HTMLInputElement).blur();
+                                          }
+                                        }
+                                      }}
+                                      className="w-16 px-1 py-0.5 text-center bg-transparent border border-pencil rounded text-[10px] font-extrabold focus:bg-control"
+                                      disabled={fetchingJobIds.has(job.id)}
+                                    />
+                                    {job.link && (
                                       <>
-                                        <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                                        <span>โหลด...</span>
+                                        <button
+                                          onClick={() => handleAutoFetchCount(job.id, job.link)}
+                                          disabled={fetchingJobIds.has(job.id)}
+                                          className={`px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded border border-amber-300 font-hand text-[9px] flex items-center gap-0.5 font-bold shadow-sketch-sm ${
+                                            fetchingJobIds.has(job.id) ? 'opacity-70 cursor-not-allowed' : ''
+                                          }`}
+                                          title="ดึงยอดผู้ติดตามล่าสุดจากลิงก์อัตโนมัติ"
+                                        >
+                                          {fetchingJobIds.has(job.id) ? (
+                                            <>
+                                              <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                              <span>ดึง...</span>
+                                            </>
+                                          ) : (
+                                            <span>🤖 ดึงยอด</span>
+                                          )}
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            setOcrModalConfig({
+                                              title: `อ่านยอดปัจจุบันจากรูปแคป: ${job.title}`,
+                                              fieldLabel: 'ยอดปัจจุบันที่ตรวจพบ',
+                                              onConfirm: (cnt) => {
+                                                handleUpdateCurrentCount(job.id, cnt);
+                                              }
+                                            });
+                                            setOcrModalOpen(true);
+                                          }}
+                                          className="px-1.5 py-0.5 bg-sky-50 hover:bg-sky-100 text-sky-800 rounded border border-sky-300 font-hand text-[9px] flex items-center gap-0.5 font-bold shadow-sketch-sm"
+                                          title="อ่านยอดจากรูปแคปหน้าจอ (OCR)"
+                                        >
+                                          <span>📸 สแกน</span>
+                                        </button>
+                                        <a
+                                          href={getAppDeepLink(job.link)}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="px-1.5 py-0.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded border border-neutral-300 font-hand text-[9px] flex items-center gap-0.5 font-bold shadow-sketch-sm"
+                                          title="เปิดแอป"
+                                        >
+                                          <span>🚀 แอป</span>
+                                        </a>
                                       </>
-                                    ) : (
-                                      <span>🤖 ดึงยอด</span>
                                     )}
-                                  </button>
-                                )}
-                              </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                /* Multi-Link Section */
+                                <div className="space-y-2 pt-1">
+                                  <div className="flex items-center justify-between bg-indigo-50/60 dark:bg-indigo-950/40 p-1.5 rounded border border-indigo-200 dark:border-indigo-900">
+                                    <span className="font-hand font-bold text-[10px] text-indigo-900 dark:text-indigo-300 flex items-center gap-1">
+                                      <Layers className="w-3 h-3" /> งาน {jobLinks.length} ลิงก์
+                                    </span>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleBatchFetchMultiLinks(job)}
+                                        disabled={fetchingJobIds.has(job.id)}
+                                        className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-hand text-[9px] font-bold shadow-sketch-sm flex items-center gap-0.5"
+                                      >
+                                        {fetchingJobIds.has(job.id) ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RefreshCw className="w-2.5 h-2.5" />}
+                                        <span>⚡ ดึงทุกลิงก์</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setExpandedMultiLinkJobs(prev => {
+                                            const next = new Set(prev);
+                                            if (next.has(job.id)) next.delete(job.id);
+                                            else next.add(job.id);
+                                            return next;
+                                          });
+                                        }}
+                                        className="px-1.5 py-0.5 bg-white dark:bg-neutral-800 border border-pencil rounded font-hand text-[9px] font-bold"
+                                      >
+                                        {isExpanded ? 'ย่อ ▲' : 'ดูทุกลิงก์ ▼'}
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {isExpanded && (
+                                    <div className="space-y-1.5 max-h-48 overflow-y-auto pl-1 pr-1">
+                                      {jobLinks.map((sub, sIdx) => (
+                                        <div key={sub.id} className="p-1.5 bg-white/80 dark:bg-neutral-900/80 rounded border border-neutral-300 dark:border-neutral-700 text-[10px] space-y-1 font-hand">
+                                          <div className="flex items-center justify-between">
+                                            <span className="font-bold text-pencil">#{sIdx + 1}: {sub.done}/{sub.target_count} ({Math.min(100, Math.round(((sub.done || 0) / (sub.target_count || 1)) * 100))}%)</span>
+                                            <div className="flex items-center gap-1">
+                                              {sub.url && (
+                                                <>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleAutoFetchCount(job.id, sub.url, sub.id)}
+                                                    disabled={fetchingJobIds.has(`${job.id}-${sub.id}`)}
+                                                    className="px-1.5 py-0.2 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded font-bold text-[9px]"
+                                                  >
+                                                    {fetchingJobIds.has(`${job.id}-${sub.id}`) ? '...' : '🤖 ดึง'}
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setOcrModalConfig({
+                                                        title: `สแกนรูปโพสต์ #${sIdx + 1}`,
+                                                        fieldLabel: 'ยอดปัจจุบันที่ตรวจพบ',
+                                                        onConfirm: (cnt) => {
+                                                          handleUpdateMultiLinkCount(job.id, sub.id, cnt);
+                                                        }
+                                                      });
+                                                      setOcrModalOpen(true);
+                                                    }}
+                                                    className="px-1.5 py-0.2 bg-sky-100 hover:bg-sky-200 text-sky-900 rounded font-bold text-[9px]"
+                                                  >
+                                                    📸
+                                                  </button>
+                                                  <a
+                                                    href={getAppDeepLink(sub.url)}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="px-1.5 py-0.2 bg-neutral-200 text-neutral-800 rounded font-bold text-[9px]"
+                                                  >
+                                                    🚀
+                                                  </a>
+                                                </>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center gap-1">
+                                            <span className="text-pencil-muted">เริ่ม: {sub.start_count} ➔ ตอนนี้:</span>
+                                            <input
+                                              type="number"
+                                              defaultValue={sub.current_count || (Number(sub.start_count) + Number(sub.done))}
+                                              onBlur={(e) => {
+                                                const val = Number(e.target.value);
+                                                if (val > 0) handleUpdateMultiLinkCount(job.id, sub.id, val);
+                                              }}
+                                              className="w-14 px-1 py-0.2 border border-pencil rounded bg-transparent font-bold text-center text-[9px]"
+                                            />
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Quick Follower Updates (Foreign/Thai) */}
+                            <div className="grid grid-cols-1 gap-2 pt-2 border-t border-dotted border-pencil">
+                              {(job.service_type === 'ต่างชาติ' || job.service_type === 'ผสม') && (Number(job.foreign_added) > 0) && (
+                                <div className="flex justify-between items-center gap-2">
+                                  <span className="font-hand text-[10px] text-pencil-muted">
+                                    🌎 ต่างชาติ: +{job.foreign_done} / +{(Number(job.foreign_added) || 0) + (Number(job.foreign_gift) || 0)} (ค้าง {calculations.remainingForeign})
+                                  </span>
+                                </div>
+                              )}
+
+                              {(job.service_type === 'ไทย' || job.service_type === 'ผสม') && (Number(job.thai_added) > 0) && (
+                                <div className="flex justify-between items-center gap-2">
+                                  <span className="font-hand text-[10px] text-pencil-muted">
+                                    🇹🇭 ไทย: +{job.thai_done} / +{(Number(job.thai_added) || 0) + (Number(job.thai_gift) || 0)} (ค้าง {calculations.remainingThai})
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           </div>
-
-                          {/* Quick Follower Updates (Foreign/Thai) */}
-                          <div className="grid grid-cols-1 gap-2 pt-2 border-t border-dotted border-pencil">
-                            
-                            {/* Foreign Follower update row */}
-                            {(job.service_type === 'ต่างชาติ' || job.service_type === 'ผสม') && (Number(job.foreign_added) > 0) && (
-                              <div className="flex justify-between items-center gap-2">
-                                <span className="font-hand text-[10px] text-pencil-muted">
-                                  🌎 ต่างชาติ: +{job.foreign_done} / +{(Number(job.foreign_added) || 0) + (Number(job.foreign_gift) || 0)} (ค้าง {calculations.remainingForeign})
-                                </span>
-                              </div>
-                            )}
-
-                            {/* Thai Follower update row */}
-                            {(job.service_type === 'ไทย' || job.service_type === 'ผสม') && (Number(job.thai_added) > 0) && (
-                              <div className="flex justify-between items-center gap-2">
-                                <span className="font-hand text-[10px] text-pencil-muted">
-                                  🇹🇭 ไทย: +{job.thai_done} / +{(Number(job.thai_added) || 0) + (Number(job.thai_gift) || 0)} (ค้าง {calculations.remainingThai})
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
+                        );
+                      })()}
                       
                       {/* General Freelance Progress Bar (Mobile) */}
                       {!isSMM && (
@@ -2217,55 +2713,105 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                     ></div>
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-1.5 mt-1.5 text-[10px] font-hand">
-                                  <span className="text-pencil-muted font-bold whitespace-nowrap">
-                                    ยอดจริงบน {job.platform?.toLowerCase().includes('tiktok') ? 'TikTok' : job.platform?.toLowerCase().includes('facebook') ? 'Facebook' : 'IG'}:
-                                  </span>
-                                  <div className="flex items-center gap-1">
-                                    <input
-                                      key={`${job.id}-${(Number(job.start_count) || 0) + (Number(job.foreign_done) || 0) + (Number(job.thai_done) || 0)}`}
-                                      type="number"
-                                      placeholder="ระบุยอดจริง..."
-                                      defaultValue={(Number(job.start_count) || 0) + (Number(job.foreign_done) || 0) + (Number(job.thai_done) || 0)}
-                                      onBlur={(e) => {
-                                        const val = Number(e.target.value);
-                                        if (val > 0) {
-                                          handleUpdateCurrentCount(job.id, val);
-                                        }
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                          const val = Number((e.target as HTMLInputElement).value);
-                                          if (val > 0) {
-                                            handleUpdateCurrentCount(job.id, val);
-                                            (e.target as HTMLInputElement).blur();
-                                          }
-                                        }
-                                      }}
-                                      className="w-20 px-1 py-0.5 text-center bg-transparent border border-pencil rounded text-[10px] font-extrabold focus:bg-control"
-                                      disabled={fetchingJobIds.has(job.id)}
-                                    />
-                                    {job.link && (
+                                {(() => {
+                                  const jobLinks = parseJobLinks(job.notes);
+                                  const hasMultiLinks = jobLinks && jobLinks.length > 0;
+                                  
+                                  if (!hasMultiLinks) {
+                                    return (
+                                      <div className="flex items-center gap-1.5 mt-1.5 text-[10px] font-hand">
+                                        <span className="text-pencil-muted font-bold whitespace-nowrap">
+                                          ยอดจริง:
+                                        </span>
+                                        <div className="flex flex-wrap items-center gap-1">
+                                          <input
+                                            key={`${job.id}-${(Number(job.start_count) || 0) + (Number(job.foreign_done) || 0) + (Number(job.thai_done) || 0)}`}
+                                            type="number"
+                                            placeholder="ระบุยอด..."
+                                            defaultValue={(Number(job.start_count) || 0) + (Number(job.foreign_done) || 0) + (Number(job.thai_done) || 0)}
+                                            onBlur={(e) => {
+                                              const val = Number(e.target.value);
+                                              if (val > 0) {
+                                                handleUpdateCurrentCount(job.id, val);
+                                              }
+                                            }}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') {
+                                                const val = Number((e.target as HTMLInputElement).value);
+                                                if (val > 0) {
+                                                  handleUpdateCurrentCount(job.id, val);
+                                                  (e.target as HTMLInputElement).blur();
+                                                }
+                                              }
+                                            }}
+                                            className="w-16 px-1 py-0.5 text-center bg-transparent border border-pencil rounded text-[10px] font-extrabold focus:bg-control"
+                                            disabled={fetchingJobIds.has(job.id)}
+                                          />
+                                          {job.link && (
+                                            <>
+                                              <button
+                                                onClick={() => handleAutoFetchCount(job.id, job.link)}
+                                                disabled={fetchingJobIds.has(job.id)}
+                                                className={`px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded border border-amber-300 font-hand text-[9px] flex items-center gap-0.5 font-bold shadow-sketch-sm ${
+                                                  fetchingJobIds.has(job.id) ? 'opacity-70 cursor-not-allowed' : ''
+                                                }`}
+                                                title="ดึงยอดผู้ติดตามล่าสุดจากลิงก์อัตโนมัติ"
+                                              >
+                                                {fetchingJobIds.has(job.id) ? (
+                                                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                                ) : (
+                                                  <span>🤖 ดึง</span>
+                                                )}
+                                              </button>
+                                              <button
+                                                onClick={() => {
+                                                  setOcrModalConfig({
+                                                    title: `อ่านยอดปัจจุบัน: ${job.title}`,
+                                                    fieldLabel: 'ยอดปัจจุบันที่ตรวจพบ',
+                                                    onConfirm: (cnt) => {
+                                                      handleUpdateCurrentCount(job.id, cnt);
+                                                    }
+                                                  });
+                                                  setOcrModalOpen(true);
+                                                }}
+                                                className="px-1.5 py-0.5 bg-sky-50 hover:bg-sky-100 text-sky-800 rounded border border-sky-300 font-hand text-[9px] font-bold"
+                                                title="สแกนรูปแคปหน้าจอ"
+                                              >
+                                                📸
+                                              </button>
+                                              <a
+                                                href={getAppDeepLink(job.link)}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="px-1.5 py-0.5 bg-neutral-100 text-neutral-800 rounded border border-neutral-300 font-hand text-[9px] font-bold"
+                                                title="เปิดแอป"
+                                              >
+                                                🚀
+                                              </a>
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+
+                                  return (
+                                    <div className="flex items-center justify-between gap-1 mt-1.5 bg-indigo-50/50 p-1 rounded border border-indigo-200">
+                                      <span className="text-[10px] font-bold text-indigo-900 font-hand">
+                                        🔗 {jobLinks.length} ลิงก์
+                                      </span>
                                       <button
-                                        onClick={() => handleAutoFetchCount(job.id, job.link)}
+                                        type="button"
+                                        onClick={() => handleBatchFetchMultiLinks(job)}
                                         disabled={fetchingJobIds.has(job.id)}
-                                        className={`px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded border border-amber-300 font-hand text-[9px] flex items-center gap-0.5 font-bold shadow-sketch-sm ${
-                                          fetchingJobIds.has(job.id) ? 'opacity-70 cursor-not-allowed' : ''
-                                        }`}
-                                        title="ดึงยอดผู้ติดตามล่าสุดจากลิงก์อัตโนมัติ"
+                                        className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-hand text-[9px] font-bold flex items-center gap-0.5 shadow-xs"
                                       >
-                                        {fetchingJobIds.has(job.id) ? (
-                                          <>
-                                            <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                                            <span>โหลด...</span>
-                                          </>
-                                        ) : (
-                                          <span>🤖 ดึงยอด</span>
-                                        )}
+                                        {fetchingJobIds.has(job.id) ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RefreshCw className="w-2.5 h-2.5" />}
+                                        <span>⚡ ดึงทุกลิงก์</span>
                                       </button>
-                                    )}
-                                  </div>
-                                </div>
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             ) : (
                               <div className="space-y-1">
@@ -2481,33 +3027,228 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                   {jobCategory === 'fastwork_smm' ? (
                     /* 🚀 SMM TEMPLATE FIELDS */
                     <div className="space-y-4">
-                      {/* SMM Link Row (Auto Extract) */}
-                      <div className="p-3 bg-amber-50/40 border border-dashed border-amber-300 rounded space-y-2">
-                        <span className="text-[10px] font-bold text-amber-800 font-hand block">
-                          💡 วางลิงก์ก่อนเพื่อดึงชื่อผู้ใช้และตั้งชื่อลูกค้า/ชื่องานให้อัตโนมัติ
-                        </span>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-bold mb-1 font-hand">ลิงก์โปรไฟล์ / ลิงก์โพสต์ลูกค้า:</label>
-                            <input
-                              type="url"
-                              value={smmLink}
-                              onChange={(e) => handleSmmLinkChange(e.target.value)}
-                              placeholder="วางลิงก์ IG, TikTok เพื่อดึงชื่อผู้ใช้อัตโนมัติ"
-                              className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold mb-1 font-hand">ชื่อบัญชีลูกค้า (Handle):</label>
-                            <input
-                              type="text"
-                              value={smmAccountName}
-                              onChange={(e) => setSmmAccountName(e.target.value)}
-                              placeholder="ดึงจากลิงก์ หรือพิมพ์เอง เช่น natachaseq"
-                              className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                            />
-                          </div>
+                      {/* SMM Link Row & Action Buttons */}
+                      <div className="p-3 bg-amber-50/40 border border-dashed border-amber-300 rounded space-y-3">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                          <span className="text-[10px] font-bold text-amber-800 font-hand block">
+                            💡 วางลิงก์เพื่อดึงชื่อผู้ใช้ หรือกดดึงยอดเริ่มต้น/สแกนรูปแคปหน้าจอ
+                          </span>
+                          {/* Multi-link toggle button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = !isMultiLink;
+                              setIsMultiLink(next);
+                              if (next && multiLinks.length === 0) {
+                                setMultiLinks([
+                                  { id: '1', url: smmLink || '', start_count: Number(smmStartCount) || 0, target_count: Number(smmTargetCount) || 100, current_count: Number(smmStartCount) || 0, done: 0, status: 'pending' },
+                                  { id: '2', url: '', start_count: 0, target_count: 100, current_count: 0, done: 0, status: 'pending' }
+                                ]);
+                              }
+                            }}
+                            className={`px-2.5 py-1 text-xs rounded-md font-hand font-bold flex items-center gap-1 transition-all ${
+                              isMultiLink 
+                                ? 'bg-indigo-600 text-white shadow-xs' 
+                                : 'bg-white dark:bg-neutral-800 border border-pencil hover:bg-indigo-50 text-pencil'
+                            }`}
+                          >
+                            <Layers className="w-3.5 h-3.5" />
+                            {isMultiLink ? '✓ โหมดหลายลิงก์ (เปิดอยู่)' : '+ ใช้งานหลายลิงก์ (เช่น ปั๊มไลค์ 3-5 โพสต์)'}
+                          </button>
                         </div>
+
+                        {!isMultiLink ? (
+                          /* Single Link Mode */
+                          <div className="space-y-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-xs font-bold mb-1 font-hand">ลิงก์โปรไฟล์ / ลิงก์โพสต์ลูกค้า:</label>
+                                <input
+                                  type="url"
+                                  value={smmLink}
+                                  onChange={(e) => handleSmmLinkChange(e.target.value)}
+                                  placeholder="วางลิงก์ IG, TikTok เพื่อดึงชื่อผู้ใช้อัตโนมัติ"
+                                  className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold mb-1 font-hand">ชื่อบัญชีลูกค้า (Handle):</label>
+                                <input
+                                  type="text"
+                                  value={smmAccountName}
+                                  onChange={(e) => setSmmAccountName(e.target.value)}
+                                  placeholder="ดึงจากลิงก์ หรือพิมพ์เอง เช่น natachaseq"
+                                  className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Quick Actions for Link */}
+                            {smmLink && (
+                              <div className="flex flex-wrap items-center gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleFetchStartCount(smmLink)}
+                                  disabled={fetchingStartCount}
+                                  className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded text-xs font-hand font-bold flex items-center gap-1 shadow-sketch-sm"
+                                  title="ดึงยอดเริ่มต้นปัจจุบันลงช่องยอดเดิม"
+                                >
+                                  {fetchingStartCount ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                                  <span>🔍 ดึงยอดเริ่มต้น</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOcrModalConfig({
+                                      title: 'อ่านยอดเริ่มต้นจากรูปแคป (Start Count)',
+                                      fieldLabel: 'ยอดเริ่มต้นที่ตรวจพบ',
+                                      onConfirm: (cnt) => {
+                                        setSmmStartCount(String(cnt));
+                                      }
+                                    });
+                                    setOcrModalOpen(true);
+                                  }}
+                                  className="px-2.5 py-1 bg-sky-500 hover:bg-sky-600 text-white rounded text-xs font-hand font-bold flex items-center gap-1 shadow-sketch-sm"
+                                  title="เลือกหรือวางภาพแคปหน้าจอเพื่อดูดยอดตัวเลข"
+                                >
+                                  <Camera className="w-3 h-3" />
+                                  <span>📸 สแกนรูปแคป</span>
+                                </button>
+                                <a
+                                  href={getAppDeepLink(smmLink)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="px-2.5 py-1 bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 text-neutral-800 dark:text-neutral-200 rounded text-xs font-hand font-bold flex items-center gap-1 shadow-sketch-sm"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  <span>🚀 เปิดแอป</span>
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          /* Multi-Link Mode List */
+                          <div className="space-y-3 bg-white/70 dark:bg-neutral-900/70 p-3 rounded-lg border border-indigo-200 dark:border-indigo-900">
+                            <span className="text-xs font-bold text-indigo-900 dark:text-indigo-300 font-hand block">
+                              🔗 รายการลิงก์โพสต์ในงานนี้ ({multiLinks.length} ลิงก์):
+                            </span>
+                            
+                            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                              {multiLinks.map((item, idx) => (
+                                <div key={item.id} className="p-2.5 bg-neutral-50 dark:bg-neutral-800 rounded border border-pencil text-xs space-y-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-bold font-hand text-pencil-muted">โพสต์ #{idx + 1}:</span>
+                                    <div className="flex items-center gap-1">
+                                      {item.url && (
+                                        <>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleFetchStartCount(item.url, idx)}
+                                            className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded font-hand font-bold text-[10px] flex items-center gap-0.5"
+                                            title="ดึงยอดเริ่มของลิงก์นี้"
+                                          >
+                                            🔍 ดึงเริ่ม
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setOcrModalConfig({
+                                                title: `อ่านยอดเริ่มของโพสต์ #${idx + 1}`,
+                                                fieldLabel: 'ยอดเริ่มที่ตรวจพบ',
+                                                onConfirm: (cnt) => {
+                                                  setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, start_count: cnt } : l));
+                                                }
+                                              });
+                                              setOcrModalOpen(true);
+                                            }}
+                                            className="px-2 py-0.5 bg-sky-100 text-sky-900 rounded font-hand font-bold text-[10px] flex items-center gap-0.5"
+                                          >
+                                            📸 สแกน
+                                          </button>
+                                          <a
+                                            href={getAppDeepLink(item.url)}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="px-2 py-0.5 bg-neutral-200 text-neutral-800 rounded font-hand font-bold text-[10px] flex items-center gap-0.5"
+                                          >
+                                            🚀 เปิด
+                                          </a>
+                                        </>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (multiLinks.length <= 1) {
+                                            alert('ต้องมีอย่างน้อย 1 ลิงก์');
+                                            return;
+                                          }
+                                          setMultiLinks(prev => prev.filter((_, i) => i !== idx));
+                                        }}
+                                        className="text-red-500 hover:text-red-700 p-0.5 ml-1"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <div className="sm:col-span-2">
+                                      <input
+                                        type="url"
+                                        value={item.url}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, url: val } : l));
+                                        }}
+                                        placeholder="วางลิงก์โพสต์..."
+                                        className="w-full p-1.5 bg-transparent border border-pencil rounded text-xs font-hand"
+                                      />
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <div className="w-1/2">
+                                        <input
+                                          type="number"
+                                          value={item.start_count || ''}
+                                          onChange={(e) => {
+                                            const val = Number(e.target.value) || 0;
+                                            setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, start_count: val } : l));
+                                          }}
+                                          placeholder="ยอดเริ่ม"
+                                          className="w-full p-1.5 bg-transparent border border-pencil rounded text-xs font-hand"
+                                        />
+                                      </div>
+                                      <div className="w-1/2">
+                                        <input
+                                          type="number"
+                                          value={item.target_count || ''}
+                                          onChange={(e) => {
+                                            const val = Number(e.target.value) || 0;
+                                            setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, target_count: val } : l));
+                                          }}
+                                          placeholder="เป้าหมาย"
+                                          className="w-full p-1.5 bg-transparent border border-pencil rounded text-xs font-hand font-bold text-amber-700 dark:text-amber-400"
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMultiLinks(prev => [
+                                  ...prev,
+                                  { id: Math.random().toString(36).substring(2, 9), url: '', start_count: 0, target_count: 100, current_count: 0, done: 0, status: 'pending' }
+                                ]);
+                              }}
+                              className="w-full py-1.5 border-2 border-dashed border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 rounded font-hand font-bold text-xs flex items-center justify-center gap-1 transition-colors"
+                            >
+                              <Plus className="w-3.5 h-3.5" /> เพิ่มลิงก์โพสต์ถัดไป
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -2911,6 +3652,16 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
           )}
         </div>
       )}
+
+      {/* 📸 OCR Screenshot Scanner Modal */}
+      <OCRScannerModal
+        isOpen={ocrModalOpen}
+        onClose={() => setOcrModalOpen(false)}
+        title={ocrModalConfig.title}
+        fieldLabel={ocrModalConfig.fieldLabel}
+        onConfirm={ocrModalConfig.onConfirm}
+      />
     </div>
   );
 };
+

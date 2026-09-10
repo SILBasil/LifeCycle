@@ -516,6 +516,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ userId, onSignOut })
                       <Plus className="w-3.5 h-3.5" /> เพิ่มบริการ
                     </button>
                   </form>
+
+                  {/* Quick Preset Badges */}
+                  <div>
+                    <span className="text-[10px] text-pencil-muted font-hand block mb-1">
+                      ⚡ กดเพื่อเพิ่มบริการยอดนิยมด่วน:
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        'ig : ฟอล',
+                        'ig : ไลค์ (หลายลิงก์)',
+                        'ig : วิว',
+                        'tiktok : ตต',
+                        'tiktok : ไลค์',
+                        'tiktok : วิว',
+                        'facebook : ติดตามเพจ',
+                        'facebook : ไลค์โพสต์'
+                      ].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setNewServiceName(preset)}
+                          className="px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 hover:bg-amber-100 text-pencil text-[10px] font-hand rounded border border-neutral-300 transition-colors"
+                        >
+                          + {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <p className="font-hand text-xs text-pencil-muted text-center py-10">
