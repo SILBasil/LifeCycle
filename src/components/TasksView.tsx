@@ -5,7 +5,7 @@ import {
   Briefcase, Link as LinkIcon, 
   MessageSquare, ExternalLink, AlertCircle,
   Edit3, X, Tag, Search, FileSpreadsheet, Download, Copy, Check,
-  Camera, RefreshCw, Layers
+  Camera, RefreshCw, Layers, Sparkles
 } from 'lucide-react';
 import { CustomSelect } from './CustomSelect';
 import { 
@@ -165,8 +165,16 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
   const [channels, setChannels] = useState<any[]>([]);
   const [channelsLoading, setChannelsLoading] = useState(true);
   const [showChannelManage, setShowChannelManage] = useState(false);
+  const [manageSelectedChannelId, setManageSelectedChannelId] = useState<string>('');
   const [newChannelName, setNewChannelName] = useState('');
   const [channelSaving, setChannelSaving] = useState(false);
+  const [manageNewServiceName, setManageNewServiceName] = useState('');
+
+  // Quick Add Service modal states
+  const [showAddServiceModal, setShowAddServiceModal] = useState(false);
+  const [newServiceNameInput, setNewServiceNameInput] = useState('');
+  const [addServiceTargetChannelId, setAddServiceTargetChannelId] = useState<string>('all');
+  const [serviceSaving, setServiceSaving] = useState(false);
 
   // Filters for jobs (default status is 'กำลังดำเนินการ')
   const [filterChannelId, setFilterChannelId] = useState<string>('all');
@@ -265,7 +273,14 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
           setChannels(seeded || []);
         }
       } else {
-        setChannels(data || []);
+        const loadedChannels = data || [];
+        setChannels(loadedChannels);
+        if (loadedChannels.length > 0) {
+          setManageSelectedChannelId(prev => {
+            if (prev && loadedChannels.some((c: any) => c.id === prev)) return prev;
+            return loadedChannels[0].id;
+          });
+        }
       }
     } catch (err) {
       console.error('Error fetching freelance channels:', err);
@@ -359,16 +374,22 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
 
     try {
       setChannelSaving(true);
+      const defaultServices = ['ig : ฟอล', 'ig : ไลค์', 'tiktok : ตต', 'facebook : ตต', 'อื่นๆ'];
       const { data, error } = await supabase
         .from('freelance_channels')
         .insert({
           user_id: userId,
-          name: newChannelName.trim()
+          name: newChannelName.trim(),
+          services: defaultServices
         })
         .select();
 
       if (error) throw error;
-      setChannels([...channels, ...(data || [])]);
+      const created = data || [];
+      setChannels([...channels, ...created]);
+      if (created.length > 0) {
+        setManageSelectedChannelId(created[0].id);
+      }
       setNewChannelName('');
     } catch (err) {
       console.error('Error adding channel:', err);
@@ -387,11 +408,119 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
         .eq('user_id', userId);
 
       if (error) throw error;
-      setChannels(channels.filter(c => c.id !== id));
+      const filtered = channels.filter(c => c.id !== id);
+      setChannels(filtered);
       if (selectedChannelId === id) setSelectedChannelId('');
       if (filterChannelId === id) setFilterChannelId('all');
+      if (manageSelectedChannelId === id) {
+        setManageSelectedChannelId(filtered.length > 0 ? filtered[0].id : '');
+      }
     } catch (err) {
       console.error('Error deleting channel:', err);
+    }
+  };
+
+  // Add custom SMM service and persist to Supabase DB
+  const handleAddCustomService = async (serviceName: string, targetChannelId?: string) => {
+    const trimmed = serviceName.trim();
+    if (!trimmed) return;
+
+    try {
+      setServiceSaving(true);
+      const targetChanId = targetChannelId || selectedChannelId;
+
+      if (targetChanId && targetChanId !== 'all') {
+        const chan = channels.find(c => c.id === targetChanId);
+        if (chan) {
+          const currentServices = Array.isArray(chan.services) && chan.services.length > 0 
+            ? chan.services 
+            : ['ig : ฟอล', 'ig : ไลค์', 'tiktok : ตต', 'facebook : ตต', 'อื่นๆ'];
+          
+          if (!currentServices.includes(trimmed)) {
+            const updated = [...currentServices, trimmed];
+            const { error } = await supabase
+              .from('freelance_channels')
+              .update({ services: updated })
+              .eq('id', chan.id)
+              .eq('user_id', userId);
+            
+            if (error) throw error;
+            
+            setChannels(prev => prev.map(c => c.id === chan.id ? { ...c, services: updated } : c));
+          }
+        }
+      } else {
+        // If 'all' or no channel selected, add to all channels (or create default if none exist)
+        if (channels.length === 0) {
+          const defaultChannel = {
+            user_id: userId,
+            name: 'ลูกค้าโดยตรง',
+            services: ['ig : ฟอล', 'ig : ไลค์', 'tiktok : ตต', 'facebook : ตต', 'อื่นๆ', trimmed]
+          };
+          const { data, error } = await supabase
+            .from('freelance_channels')
+            .insert([defaultChannel])
+            .select();
+          if (error) throw error;
+          if (data) setChannels(data);
+        } else {
+          // Update all channels with this new service
+          const updatedChannels = await Promise.all(
+            channels.map(async (c) => {
+              const currentServices = Array.isArray(c.services) && c.services.length > 0
+                ? c.services
+                : ['ig : ฟอล', 'ig : ไลค์', 'tiktok : ตต', 'facebook : ตต', 'อื่นๆ'];
+              if (!currentServices.includes(trimmed)) {
+                const updated = [...currentServices, trimmed];
+                await supabase
+                  .from('freelance_channels')
+                  .update({ services: updated })
+                  .eq('id', c.id)
+                  .eq('user_id', userId);
+                return { ...c, services: updated };
+              }
+              return c;
+            })
+          );
+          setChannels(updatedChannels);
+        }
+      }
+
+      // Automatically select the newly created service in the active form
+      setSmmPlatform(trimmed);
+      setShowAddServiceModal(false);
+      setNewServiceNameInput('');
+      setManageNewServiceName('');
+    } catch (err: any) {
+      console.error('Error adding custom service:', err);
+      alert('เกิดข้อผิดพลาดในการบันทึกบริการ: ' + (err.message || ''));
+    } finally {
+      setServiceSaving(false);
+    }
+  };
+
+  // Delete SMM service from a channel
+  const handleDeleteServiceFromChannel = async (channelId: string, serviceIndex: number) => {
+    const chan = channels.find(c => c.id === channelId);
+    if (!chan) return;
+    const currentServices = Array.isArray(chan.services) ? chan.services : [];
+    const updatedServices = currentServices.filter((_: any, idx: number) => idx !== serviceIndex);
+
+    try {
+      setServiceSaving(true);
+      const { error } = await supabase
+        .from('freelance_channels')
+        .update({ services: updatedServices })
+        .eq('id', channelId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      setChannels(prev => prev.map(c => c.id === channelId ? { ...c, services: updatedServices } : c));
+    } catch (err: any) {
+      console.error('Error deleting service:', err);
+      alert('เกิดข้อผิดพลาดในการลบบริการ');
+    } finally {
+      setServiceSaving(false);
     }
   };
 
@@ -1013,7 +1142,14 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
 
   const getFormAvailableServices = (chanId: string) => {
     if (!chanId) {
-      return ['ig : ฟอล', 'ig : ไลค์', 'tiktok : ตต', 'facebook : ตต', 'อื่นๆ'];
+      const allServices = new Set<string>();
+      channels.forEach((c: any) => {
+        if (c.services && Array.isArray(c.services)) {
+          c.services.forEach((s: string) => allServices.add(s));
+        }
+      });
+      const servicesArr = Array.from(allServices);
+      return servicesArr.length > 0 ? servicesArr : ['ig : ฟอล', 'ig : ไลค์', 'tiktok : ตต', 'facebook : ตต', 'อื่นๆ'];
     }
     const selectedChan = channels.find(c => c.id === chanId);
     return selectedChan?.services && selectedChan.services.length > 0
@@ -1717,11 +1853,34 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-bold mb-1 font-hand">บริการ SMM:</label>
+                          <label className="block text-xs font-bold mb-1 font-hand flex justify-between items-center">
+                            <span>บริการ SMM:</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAddServiceTargetChannelId(selectedChannelId || 'all');
+                                setShowAddServiceModal(true);
+                              }}
+                              className="text-[10px] text-amber-600 hover:underline flex items-center gap-0.5 font-bold font-hand cursor-pointer"
+                              title="เพิ่มประเภทบริการใหม่ลงฐานข้อมูล"
+                            >
+                              <Plus className="w-2.5 h-2.5" /> เพิ่มบริการ
+                            </button>
+                          </label>
                           <CustomSelect
                             value={smmPlatform}
-                            onChange={(val) => setSmmPlatform(val)}
-                            options={getFormAvailableServices(selectedChannelId).map((s: string) => ({ value: s, label: s }))}
+                            onChange={(val) => {
+                              if (val === '__add_new__') {
+                                setAddServiceTargetChannelId(selectedChannelId || 'all');
+                                setShowAddServiceModal(true);
+                              } else {
+                                setSmmPlatform(val);
+                              }
+                            }}
+                            options={[
+                              ...getFormAvailableServices(selectedChannelId).map((s: string) => ({ value: s, label: s })),
+                              { value: '__add_new__', label: '➕ เพิ่มบริการใหม่...' }
+                            ]}
                           />
                         </div>
                       </div>
@@ -2910,70 +3069,312 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
             </div>
           )}
 
-          {/* 🏷️ Modal จัดการช่องทางรับงาน */}
+          {/* 🏷️ Modal จัดการช่องทางรับงาน & บริการ SMM */}
           {showChannelManage && (
             <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <div className="bg-paper p-6 sketch-border shadow-sketch w-full max-w-md transform rotate-0.5 text-left space-y-4">
+              <div className="bg-paper p-6 sketch-border shadow-sketch w-full max-w-2xl transform rotate-0.5 text-left space-y-4 max-h-[90vh] overflow-y-auto">
                 <div className="flex justify-between items-center border-b-2 border-dashed border-pencil pb-2">
                   <h3 className="text-lg font-extrabold font-hand flex items-center gap-2">
-                    <Tag className="w-5 h-5 text-amber-500" /> จัดการช่องทางรับงาน
+                    <Tag className="w-5 h-5 text-amber-500" /> จัดการช่องทางรับงาน & บริการ SMM
                   </h3>
                   <button 
                     onClick={() => setShowChannelManage(false)}
-                    className="p-1 hover:bg-control/50 rounded-full sketch-border-sm"
+                    className="p-1 hover:bg-control/50 rounded-full sketch-border-sm cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
 
-                {/* Form to Add Channel */}
-                <form onSubmit={handleAddChannel} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newChannelName}
-                    onChange={(e) => setNewChannelName(e.target.value)}
-                    placeholder="ชื่อช่องทางใหม่ เช่น SMMGen, TikTok Shop"
-                    className="flex-grow p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                    required
-                  />
-                  <button
-                    type="submit"
-                    disabled={channelSaving}
-                    className="sketch-button bg-pencil hover:bg-neutral-800 text-white rounded px-4 text-sm font-hand"
-                  >
-                    {channelSaving ? '...' : 'เพิ่ม'}
-                  </button>
-                </form>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Left Column: Channels */}
+                  <div className="space-y-3 bg-control/20 p-3 sketch-border-sm">
+                    <h4 className="font-hand font-bold text-xs text-pencil-muted flex items-center gap-1">
+                      📁 1. ช่องทางรับงาน ({channels.length})
+                    </h4>
 
-                {/* List of Channels */}
-                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                  {channelsLoading ? (
-                    <div className="flex justify-center p-4"><Loader2 className="w-6 h-6 animate-spin text-pencil-muted" /></div>
-                  ) : channels.length === 0 ? (
-                    <p className="text-xs text-pencil-muted text-center font-hand">ยังไม่มีช่องทางรับงาน ☕</p>
-                  ) : (
-                    channels.map((chan) => (
-                      <div key={chan.id} className="flex justify-between items-center p-2 bg-control/40 sketch-border-sm">
-                        <span className="font-hand font-bold text-sm">{chan.name}</span>
-                        <button
-                          onClick={() => handleDeleteChannel(chan.id)}
-                          className="p-1 text-red-500 hover:bg-red-50 rounded"
+                    {/* Form to Add Channel */}
+                    <form onSubmit={handleAddChannel} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newChannelName}
+                        onChange={(e) => setNewChannelName(e.target.value)}
+                        placeholder="เพิ่มช่องทาง เช่น SMMGen"
+                        className="flex-grow p-1.5 bg-transparent border-2 border-pencil rounded-md text-xs font-hand"
+                        required
+                      />
+                      <button
+                        type="submit"
+                        disabled={channelSaving}
+                        className="sketch-button bg-pencil hover:bg-neutral-800 text-white rounded px-3 text-xs font-hand cursor-pointer"
+                      >
+                        {channelSaving ? '...' : 'เพิ่ม'}
+                      </button>
+                    </form>
+
+                    {/* List of Channels */}
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {channelsLoading ? (
+                        <div className="flex justify-center p-4"><Loader2 className="w-5 h-5 animate-spin text-pencil-muted" /></div>
+                      ) : channels.length === 0 ? (
+                        <p className="text-xs text-pencil-muted text-center font-hand py-3">ยังไม่มีช่องทางรับงาน</p>
+                      ) : (
+                        channels.map((chan) => (
+                          <div 
+                            key={chan.id} 
+                            onClick={() => setManageSelectedChannelId(chan.id)}
+                            className={`flex justify-between items-center p-2 rounded cursor-pointer transition-all ${
+                              manageSelectedChannelId === chan.id 
+                                ? 'bg-amber-100 dark:bg-amber-950/40 border-2 border-amber-500 font-bold shadow-sm' 
+                                : 'bg-control/50 hover:bg-control/80 border border-pencil-muted/30'
+                            }`}
+                          >
+                            <span className="font-hand text-xs flex items-center gap-1.5">
+                              {manageSelectedChannelId === chan.id ? '👉' : '▫️'} {chan.name}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteChannel(chan.id);
+                              }}
+                              className="p-1 text-red-500 hover:bg-red-50 rounded cursor-pointer"
+                              title="ลบช่องทางนี้"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Column: SMM Services of Selected Channel */}
+                  <div className="space-y-3 bg-control/20 p-3 sketch-border-sm">
+                    <h4 className="font-hand font-bold text-xs text-pencil-muted flex items-center justify-between">
+                      <span>⚡ 2. บริการ SMM: {channels.find(c => c.id === manageSelectedChannelId)?.name || 'เลือกช่องทาง'}</span>
+                    </h4>
+
+                    {manageSelectedChannelId ? (
+                      <div className="space-y-3">
+                        {/* Service Tags */}
+                        <div className="flex flex-wrap gap-1.5 min-h-[90px] max-h-40 overflow-y-auto p-2 bg-paper/60 sketch-border-sm">
+                          {(() => {
+                            const selChan = channels.find(c => c.id === manageSelectedChannelId);
+                            const servicesList = selChan?.services || [];
+                            if (servicesList.length === 0) {
+                              return <p className="font-hand text-[11px] text-pencil-muted m-auto">ยังไม่มีประเภทบริการในช่องทางนี้</p>;
+                            }
+                            return servicesList.map((s: string, idx: number) => (
+                              <span 
+                                key={`${s}-${idx}`}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 dark:bg-neutral-800 text-amber-900 dark:text-amber-200 text-[11px] font-bold font-hand sketch-border-sm"
+                              >
+                                {s}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteServiceFromChannel(manageSelectedChannelId, idx)}
+                                  className="text-neutral-400 hover:text-red-500 cursor-pointer ml-0.5"
+                                  title="ลบบริการนี้"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </span>
+                            ));
+                          })()}
+                        </div>
+
+                        {/* Form to Add Service */}
+                        <form 
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            if (manageNewServiceName.trim()) {
+                              handleAddCustomService(manageNewServiceName, manageSelectedChannelId);
+                            }
+                          }} 
+                          className="flex gap-2"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                          <input
+                            type="text"
+                            value={manageNewServiceName}
+                            onChange={(e) => setManageNewServiceName(e.target.value)}
+                            placeholder="เพิ่มบริการ เช่น ig : บันทึก"
+                            className="flex-grow p-1.5 bg-transparent border-2 border-pencil rounded-md text-xs font-hand"
+                            disabled={serviceSaving}
+                            required
+                          />
+                          <button
+                            type="submit"
+                            disabled={serviceSaving || !manageNewServiceName.trim()}
+                            className="sketch-button bg-pencil hover:bg-neutral-800 text-white rounded px-3 text-xs font-hand cursor-pointer"
+                          >
+                            {serviceSaving ? '...' : '+ เพิ่ม'}
+                          </button>
+                        </form>
+
+                        {/* Preset Buttons */}
+                        <div>
+                          <span className="text-[10px] text-pencil-muted font-hand block mb-1">
+                            ⚡ เพิ่มด่วน:
+                          </span>
+                          <div className="flex flex-wrap gap-1">
+                            {[
+                              'ig : ฟอล',
+                              'ig : ไลค์',
+                              'ig : บันทึก',
+                              'tiktok : ตต',
+                              'tiktok : ไลค์',
+                              'tiktok : เซฟคลิป',
+                              'facebook : ติดตามเพจ',
+                              'youtube : ซับ',
+                              'x : ฟอล'
+                            ].map((preset) => (
+                              <button
+                                key={preset}
+                                type="button"
+                                onClick={() => handleAddCustomService(preset, manageSelectedChannelId)}
+                                className="px-1.5 py-0.5 bg-control/60 hover:bg-amber-100 text-pencil text-[10px] font-hand rounded border border-neutral-300 transition-colors cursor-pointer"
+                              >
+                                + {preset}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       </div>
-                    ))
-                  )}
+                    ) : (
+                      <p className="font-hand text-xs text-pencil-muted text-center py-8">
+                        กรุณาเลือกหรือเพิ่มช่องทางรับงานทางซ้ายก่อน
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="text-right border-t border-dashed border-pencil pt-3">
                   <button
                     onClick={() => setShowChannelManage(false)}
-                    className="sketch-button bg-control hover:bg-control/80 text-pencil rounded px-4 py-1 text-xs font-hand"
+                    className="sketch-button bg-control hover:bg-control/80 text-pencil rounded px-4 py-1 text-xs font-hand cursor-pointer"
                   >
-                    ปิดหน้าต่าง
+                    เสร็จสิ้น / ปิดหน้าต่าง
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* ✨ Modal เพิ่มบริการ SMM ใหม่แบบด่วน (Quick Add Service Modal) */}
+          {showAddServiceModal && (
+            <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+              <div className="bg-paper p-6 sketch-border shadow-sketch w-full max-w-md transform rotate-0.5 text-left space-y-4 animate-scale-up">
+                <div className="flex justify-between items-center border-b-2 border-dashed border-pencil pb-2">
+                  <h3 className="text-lg font-extrabold font-hand flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-amber-500" /> เพิ่มบริการ SMM ใหม่ลงฐานข้อมูล
+                  </h3>
+                  <button 
+                    onClick={() => {
+                      setShowAddServiceModal(false);
+                      setNewServiceNameInput('');
+                    }}
+                    className="p-1 hover:bg-control/50 rounded-full sketch-border-sm cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="text-xs text-pencil-muted font-hand">
+                  พิมพ์ชื่อบริการที่ต้องการเพิ่ม เมื่อบันทึกแล้วจะถูกเก็บในฐานข้อมูลเพื่อเลือกใช้งานได้ตลอดเวลา
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (newServiceNameInput.trim()) {
+                      handleAddCustomService(newServiceNameInput, addServiceTargetChannelId);
+                    }
+                  }}
+                  className="space-y-3"
+                >
+                  <div>
+                    <label className="block text-xs font-bold mb-1 font-hand">ชื่อบริการ SMM:</label>
+                    <input
+                      type="text"
+                      value={newServiceNameInput}
+                      onChange={(e) => setNewServiceNameInput(e.target.value)}
+                      placeholder="เช่น ig : บันทึกโพสต์, tiktok : เซฟคลิป, x : ฟอล"
+                      className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                      required
+                      autoFocus
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold mb-1 font-hand">บันทึกเข้าช่องทาง:</label>
+                    <CustomSelect
+                      value={addServiceTargetChannelId}
+                      onChange={(val) => setAddServiceTargetChannelId(val)}
+                      options={[
+                        { value: 'all', label: '🌐 ทุกช่องทาง (ใช้ได้กับทุกช่องทาง)' },
+                        ...channels.map((c) => ({ value: c.id, label: `📁 ช่องทาง: ${c.name}` }))
+                      ]}
+                    />
+                  </div>
+
+                  {/* Quick Presets */}
+                  <div>
+                    <span className="text-[10px] text-pencil-muted font-hand block mb-1">
+                      ⚡ หรือกดเลือกจากบริการยอดนิยม:
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        'ig : บันทึกโพสต์',
+                        'ig : แชร์สตอรี่',
+                        'tiktok : เซฟคลิป',
+                        'tiktok : แชร์คลิป',
+                        'youtube : ซับ',
+                        'youtube : วิว',
+                        'facebook : แชร์โพสต์',
+                        'x : ฟอล',
+                        'x : รีทวีต',
+                        'telegram : สมาชิก'
+                      ].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setNewServiceNameInput(preset)}
+                          className="px-2 py-0.5 bg-control/60 hover:bg-amber-100 text-pencil text-[10px] font-hand rounded border border-neutral-300 transition-colors cursor-pointer"
+                        >
+                          + {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 border-t border-dashed border-pencil pt-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddServiceModal(false);
+                        setNewServiceNameInput('');
+                      }}
+                      className="sketch-button bg-control hover:bg-control/80 text-pencil rounded px-3 py-1.5 text-xs font-hand cursor-pointer"
+                    >
+                      ยกเลิก
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={serviceSaving || !newServiceNameInput.trim()}
+                      className="sketch-button bg-pencil hover:bg-neutral-800 text-white rounded px-4 py-1.5 text-xs font-hand flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {serviceSaving ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> กำลังบันทึก...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-3.5 h-3.5" /> บันทึกลง DB & เลือกใช้
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           )}
@@ -3292,11 +3693,34 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-bold mb-1 font-hand">บริการ SMM:</label>
+                          <label className="block text-xs font-bold mb-1 font-hand flex justify-between items-center">
+                            <span>บริการ SMM:</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAddServiceTargetChannelId(selectedChannelId || 'all');
+                                setShowAddServiceModal(true);
+                              }}
+                              className="text-[10px] text-amber-600 hover:underline flex items-center gap-0.5 font-bold font-hand cursor-pointer"
+                              title="เพิ่มประเภทบริการใหม่ลงฐานข้อมูล"
+                            >
+                              <Plus className="w-2.5 h-2.5" /> เพิ่มบริการ
+                            </button>
+                          </label>
                           <CustomSelect
                             value={smmPlatform}
-                            onChange={(val) => setSmmPlatform(val)}
-                            options={getFormAvailableServices(selectedChannelId).map((s: string) => ({ value: s, label: s }))}
+                            onChange={(val) => {
+                              if (val === '__add_new__') {
+                                setAddServiceTargetChannelId(selectedChannelId || 'all');
+                                setShowAddServiceModal(true);
+                              } else {
+                                setSmmPlatform(val);
+                              }
+                            }}
+                            options={[
+                              ...getFormAvailableServices(selectedChannelId).map((s: string) => ({ value: s, label: s })),
+                              { value: '__add_new__', label: '➕ เพิ่มบริการใหม่...' }
+                            ]}
                           />
                         </div>
                       </div>
