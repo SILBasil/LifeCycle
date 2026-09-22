@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { 
   ListTodo, Plus, Trash2, Calendar, Folder, Loader2, 
   Briefcase, Link as LinkIcon, 
-  MessageSquare, ExternalLink, AlertCircle,
+  MessageSquare, ExternalLink, AlertCircle, CheckCircle, Info,
   Edit3, X, Tag, Search, FileSpreadsheet, Download, Copy, Check,
   Camera, RefreshCw, Layers, Sparkles
 } from 'lucide-react';
@@ -180,6 +180,13 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
   const [filterChannelId, setFilterChannelId] = useState<string>('all');
   const [filterJobStatus, setFilterJobStatus] = useState<string>('กำลังดำเนินการ');
   const [filterPlatform, setFilterPlatform] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Google Sheet Sync Modal states
+  const [showGSheetModal, setShowGSheetModal] = useState(false);
+  const [webhookUrlInput, setWebhookUrlInput] = useState('');
+  const [syncingSheet, setSyncingSheet] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
 
   // Job Form states (for Add/Edit)
   const [selectedChannelId, setSelectedChannelId] = useState<string>('');
@@ -225,14 +232,16 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
   const [fetchingStartCount, setFetchingStartCount] = useState(false);
   const [expandedMultiLinkJobs, setExpandedMultiLinkJobs] = useState<Set<string>>(new Set());
 
-  // Search state for freelance jobs
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  // Toast notification state
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info'; id: number } | null>(null);
 
-  // Google Sheets sync states
-  const [syncingSheet, setSyncingSheet] = useState<boolean>(false);
-  const [showGSheetModal, setShowGSheetModal] = useState<boolean>(false);
-  const [webhookUrlInput, setWebhookUrlInput] = useState<string>(getGoogleSheetWebhookUrl());
-  const [copiedCode, setCopiedCode] = useState<boolean>(false);
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const id = Date.now();
+    setToast({ message, type, id });
+    setTimeout(() => {
+      setToast(current => current?.id === id ? null : current);
+    }, 4000);
+  };
 
   // Editing state
   const [editingJob, setEditingJob] = useState<any | null>(null);
@@ -335,7 +344,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
           .update({ status: 'เสร็จสิ้นปิดงานแล้ว' })
           .in('id', jobsToAutoClose)
           .eq('user_id', userId)
-          .then(({ error: autoErr }) => {
+          .then(({ error: autoErr }: { error: any }) => {
             if (autoErr) console.error('Error auto-closing expired jobs:', autoErr);
             else console.log(`Auto-closed ${jobsToAutoClose.length} jobs completed over 3 days ago.`);
           });
@@ -357,12 +366,14 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
     try {
       setSyncingSheet(true);
       const res = await syncJobsToGoogleSheet(jobs, channels, targetUrl);
-      alert(res.message);
       if (res.success) {
+        showToast(res.message, 'success');
         setShowGSheetModal(false);
+      } else {
+        showToast(res.message, 'error');
       }
     } catch (err: any) {
-      alert('เกิดข้อผิดพลาดในการซิงค์: ' + (err.message || 'ไม่ทราบสาเหตุ'));
+      showToast('เกิดข้อผิดพลาดในการซิงค์: ' + (err.message || 'ไม่ทราบสาเหตุ'), 'error');
     } finally {
       setSyncingSheet(false);
     }
@@ -491,9 +502,11 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
       setShowAddServiceModal(false);
       setNewServiceNameInput('');
       setManageNewServiceName('');
+      showToast('เพิ่มบริการใหม่เรียบร้อยแล้ว', 'success');
+      fetchChannels();
     } catch (err: any) {
       console.error('Error adding custom service:', err);
-      alert('เกิดข้อผิดพลาดในการบันทึกบริการ: ' + (err.message || ''));
+      showToast('เกิดข้อผิดพลาดในการบันทึกบริการ: ' + (err.message || ''), 'error');
     } finally {
       setServiceSaving(false);
     }
@@ -518,7 +531,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
       setChannels(prev => prev.map(c => c.id === channelId ? { ...c, services: updatedServices } : c));
     } catch (err: any) {
       console.error('Error deleting service:', err);
-      alert('เกิดข้อผิดพลาดในการลบบริการ');
+      showToast('เกิดข้อผิดพลาดในการลบบริการ', 'error');
     } finally {
       setServiceSaving(false);
     }
@@ -561,12 +574,12 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
         service_type: smmServiceType || null,
         start_count: finalStartCount,
         target_count: finalTargetCount,
-        foreign_added: Number(smmForeignAdded) || 0,
-        foreign_gift: Number(smmForeignGift) || 0,
-        foreign_done: Number(smmForeignDone) || 0,
-        thai_added: Number(smmThaiAdded) || 0,
-        thai_gift: Number(smmThaiGift) || 0,
-        thai_done: Number(smmThaiDone) || 0,
+        foreign_added: (smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม') ? (Number(smmForeignAdded) || 0) : 0,
+        foreign_gift: (smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม') ? (Number(smmForeignGift) || 0) : 0,
+        foreign_done: (smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม') ? (Number(smmForeignDone) || 0) : 0,
+        thai_added: (smmServiceType === 'ไทย' || smmServiceType === 'ผสม') ? (Number(smmThaiAdded) || 0) : 0,
+        thai_gift: (smmServiceType === 'ไทย' || smmServiceType === 'ผสม') ? (Number(smmThaiGift) || 0) : 0,
+        thai_done: (smmServiceType === 'ไทย' || smmServiceType === 'ผสม') ? (Number(smmThaiDone) || 0) : 0,
         provider_info: smmProviderInfo.trim() || null
       };
 
@@ -601,10 +614,10 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
       setIsMultiLink(false);
       setMultiLinks([]);
       setShowAddJobForm(false);
-      
+      showToast('บันทึกรายละเอียดงานใหม่สำเร็จ!', 'success');
       fetchJobs();
     } catch (err) {
-      alert('เกิดข้อผิดพลาดในการบันทึกงาน: กรุณาตรวจสอบว่าได้สร้างตารางใน Supabase SQL Editor เรียบร้อยแล้ว');
+      showToast('เกิดข้อผิดพลาดในการบันทึกงาน: กรุณาตรวจสอบการเชื่อมต่อฐานข้อมูล', 'error');
       console.error('Error adding freelance job:', err);
     } finally {
       setJobsSaving(false);
@@ -647,12 +660,12 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
         service_type: smmServiceType || null,
         start_count: finalStartCount,
         target_count: finalTargetCount,
-        foreign_added: Number(smmForeignAdded) || 0,
-        foreign_gift: Number(smmForeignGift) || 0,
-        foreign_done: Number(smmForeignDone) || 0,
-        thai_added: Number(smmThaiAdded) || 0,
-        thai_gift: Number(smmThaiGift) || 0,
-        thai_done: Number(smmThaiDone) || 0,
+        foreign_added: (smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม') ? (Number(smmForeignAdded) || 0) : 0,
+        foreign_gift: (smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม') ? (Number(smmForeignGift) || 0) : 0,
+        foreign_done: (smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม') ? (Number(smmForeignDone) || 0) : 0,
+        thai_added: (smmServiceType === 'ไทย' || smmServiceType === 'ผสม') ? (Number(smmThaiAdded) || 0) : 0,
+        thai_gift: (smmServiceType === 'ไทย' || smmServiceType === 'ผสม') ? (Number(smmThaiGift) || 0) : 0,
+        thai_done: (smmServiceType === 'ไทย' || smmServiceType === 'ผสม') ? (Number(smmThaiDone) || 0) : 0,
         provider_info: smmProviderInfo.trim() || null
       };
 
@@ -803,7 +816,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
   // 1. ดึงยอดเริ่มต้น (Start Count) - ลงเฉพาะยอดเริ่มเท่านั้น
   const handleFetchStartCount = async (url: string, linkIndex?: number) => {
     if (!url) {
-      alert('กรุณาระบุลิงก์ก่อนดึงยอด');
+      showToast('กรุณาระบุลิงก์ก่อนดึงยอด', 'info');
       return;
     }
     setFetchingStartCount(true);
@@ -815,12 +828,12 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
         } else {
           setSmmStartCount(String(res.count));
         }
-        alert(`ดึงยอดเริ่มต้นสำเร็จ: ${res.count.toLocaleString()}`);
+        showToast(`ดึงยอดเริ่มต้นสำเร็จ: ${res.count.toLocaleString()}`, 'success');
       } else {
-        alert(`ไม่สามารถดึงยอดเริ่มต้นได้: ${res.error || 'กรุณาลองใช้ปุ่มเปิดแอปหรือสแกนรูปแคปหน้าจอ'}`);
+        showToast(`ไม่สามารถดึงยอดได้: ${res.error || 'กรุณาตรวจสอบลิงก์หรือกรอกด้วยตนเอง'}`, 'error');
       }
     } catch (e: any) {
-      alert('เกิดข้อผิดพลาด: ' + (e.message || 'ไม่สามารถติดต่อเซิร์ฟเวอร์ได้'));
+      showToast('เกิดข้อผิดพลาด: ' + (e.message || 'ไม่สามารถติดต่อเซิร์ฟเวอร์ได้'), 'error');
     } finally {
       setFetchingStartCount(false);
     }
@@ -829,7 +842,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
   // 2. ดึงยอดปัจจุบันอัตโนมัติ (Current Count) ผ่าน Vercel Serverless
   const handleAutoFetchCount = async (jobId: string, profileUrl: string, linkId?: string) => {
     if (!profileUrl) {
-      alert("ไม่พบลิงก์สำหรับดึงข้อมูล");
+      showToast('ไม่พบลิงก์สำหรับดึงข้อมูล', 'info');
       return;
     }
 
@@ -848,12 +861,12 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
         } else {
           await handleUpdateCurrentCount(jobId, res.count);
         }
-        alert(`ดึงยอดสำเร็จ: ${res.count.toLocaleString()}!`);
+        showToast(`ดึงยอดสำเร็จ: ${res.count.toLocaleString()}!`, 'success');
       } else {
-        alert(`ดึงยอดอัตโนมัติไม่สำเร็จ: ${res.error || 'กรุณาลองใช้ปุ่มเปิดแอปหรือสแกนรูปแคปหน้าจอ'}`);
+        showToast(`ดึงยอดอัตโนมัติไม่สำเร็จ: ${res.error || 'กรุณากรอกยอดจริงด้วยตนเอง'}`, 'error');
       }
     } catch (e: any) {
-      alert('เกิดข้อผิดพลาด: ' + (e.message || 'ไม่สามารถติดต่อเซิร์ฟเวอร์ได้'));
+      showToast('เกิดข้อผิดพลาด: ' + (e.message || 'ไม่สามารถติดต่อเซิร์ฟเวอร์ได้'), 'error');
     } finally {
       setFetchingJobIds(prev => {
         const next = new Set(prev);
@@ -913,7 +926,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
 
       if (error) throw error;
       setJobs(jobs.map(j => j.id === job.id ? { ...j, ...updateData } : j));
-      alert(`ดึงยอดครบแล้ว: สำเร็จ ${successCount}/${updatedLinks.length} ลิงก์`);
+      showToast(`ดึงยอดครบแล้ว: สำเร็จ ${successCount}/${updatedLinks.length} ลิงก์`, successCount > 0 ? 'success' : 'error');
     } catch (err) {
       console.error('Batch fetch error:', err);
     } finally {
@@ -1003,23 +1016,36 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
 
   // Calculations helper for SMM metrics
   const getJobSMMCalculations = (job: any) => {
-    const startCount = Number(job.start_count) || 0;
+    const jobLinks = parseJobLinks(job.notes);
+    const hasMultiLinks = jobLinks && jobLinks.length > 0;
+
+    let startCount = Number(job.start_count) || 0;
+    const isForeign = job.service_type === 'ต่างชาติ' || job.service_type === 'ผสม';
+    const isThai = job.service_type === 'ไทย' || job.service_type === 'ผสม';
+
+    const foreignAdded = isForeign ? (Number(job.foreign_added) || 0) : 0;
+    const foreignGift = isForeign ? (Number(job.foreign_gift) || 0) : 0;
+    const foreignDone = isForeign ? (Number(job.foreign_done) || 0) : 0;
     
-    const foreignAdded = Number(job.foreign_added) || 0;
-    const foreignGift = Number(job.foreign_gift) || 0;
-    const foreignDone = Number(job.foreign_done) || 0;
+    const thaiAdded = isThai ? (Number(job.thai_added) || 0) : 0;
+    const thaiGift = isThai ? (Number(job.thai_gift) || 0) : 0;
+    const thaiDone = isThai ? (Number(job.thai_done) || 0) : 0;
     
-    const thaiAdded = Number(job.thai_added) || 0;
-    const thaiGift = Number(job.thai_gift) || 0;
-    const thaiDone = Number(job.thai_done) || 0;
+    let totalTargetToAdd = 0;
+    let totalDone = 0;
+
+    if (hasMultiLinks) {
+      startCount = jobLinks.reduce((s: number, l: any) => s + (Number(l.start_count) || 0), 0);
+      totalTargetToAdd = jobLinks.reduce((s: number, l: any) => s + (Number(l.target_count) || 0), 0);
+      totalDone = jobLinks.reduce((s: number, l: any) => s + (Number(l.done) || 0), 0);
+    } else {
+      totalTargetToAdd = foreignAdded + foreignGift + thaiAdded + thaiGift;
+      totalDone = foreignDone + thaiDone;
+    }
     
-    const totalTargetToAdd = foreignAdded + foreignGift + thaiAdded + thaiGift;
     const totalTargetFollowers = startCount + totalTargetToAdd;
-    
     const remainingForeign = Math.max(0, (foreignAdded + foreignGift) - foreignDone);
     const remainingThai = Math.max(0, (thaiAdded + thaiGift) - thaiDone);
-    
-    const totalDone = foreignDone + thaiDone;
     
     const progressPercent = totalTargetToAdd > 0 
       ? Math.min(100, Math.round((totalDone / totalTargetToAdd) * 100))
@@ -1056,12 +1082,20 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
 
   // Auto-calculate SMM Target Count (Start + Added counts)
   useEffect(() => {
-    const start = Number(smmStartCount) || 0;
-    const addedThai = Number(smmThaiAdded) || 0;
-    const addedForeign = Number(smmForeignAdded) || 0;
-    const target = start + addedThai + addedForeign;
-    setSmmTargetCount(String(target));
-  }, [smmStartCount, smmThaiAdded, smmForeignAdded]);
+    if (isMultiLink && multiLinks.length > 0) {
+      const sumStart = multiLinks.reduce((s, l) => s + (Number(l.start_count) || 0), 0);
+      const sumTarget = multiLinks.reduce((s, l) => s + (Number(l.target_count) || 0), 0);
+      setSmmTargetCount(String(sumStart + sumTarget));
+    } else {
+      const start = Number(smmStartCount) || 0;
+      const isThai = smmServiceType === 'ไทย' || smmServiceType === 'ผสม';
+      const isForeign = smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม';
+      const addedThai = isThai ? (Number(smmThaiAdded) || 0) : 0;
+      const addedForeign = isForeign ? (Number(smmForeignAdded) || 0) : 0;
+      const target = start + addedThai + addedForeign;
+      setSmmTargetCount(String(target));
+    }
+  }, [smmStartCount, smmThaiAdded, smmForeignAdded, smmServiceType, isMultiLink, multiLinks]);
 
   // ==========================================
   // ⚡ FILTERS & RENDER LOGIC
@@ -1510,7 +1544,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                   จัดการบันทึกรายได้งานเสริมและงานฟาสต์เวิร์ก
                 </h2>
                 <p className="text-xs text-pencil-muted font-hand mt-1">
-                  ติดตามสถานะผู้ติดตาม, ลิงก์แชทของลูกค้า, ต้นทุน และคำนวณกำไรอัตโนมัติ
+                  ติดตามสถานะงาน, ลิงก์แชทของลูกค้า, ต้นทุน และคำนวณกำไรอัตโนมัติ
                 </p>
               </div>
               <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
@@ -1609,8 +1643,8 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                             }}
                             className={`px-2.5 py-1 text-xs rounded-md font-hand font-bold flex items-center gap-1 transition-all ${
                               isMultiLink 
-                                ? 'bg-indigo-600 text-white shadow-xs' 
-                                : 'bg-white dark:bg-neutral-800 border border-pencil hover:bg-indigo-50 text-pencil'
+                                ? 'bg-indigo-600 text-white shadow-sketch-sm' 
+                                : 'bg-paper border-2 border-pencil hover:bg-indigo-50 text-pencil shadow-sketch-sm'
                             }`}
                           >
                             <Layers className="w-3.5 h-3.5" />
@@ -1629,7 +1663,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                   value={smmLink}
                                   onChange={(e) => handleSmmLinkChange(e.target.value)}
                                   placeholder="วางลิงก์ IG, TikTok เพื่อดึงชื่อผู้ใช้อัตโนมัติ"
-                                  className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                                  className="w-full p-2 bg-paper text-pencil border-2 border-pencil rounded-md text-sm font-hand placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
                                 />
                               </div>
                               <div>
@@ -1639,7 +1673,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                   value={smmAccountName}
                                   onChange={(e) => setSmmAccountName(e.target.value)}
                                   placeholder="ดึงจากลิงก์ หรือพิมพ์เอง เช่น natachaseq"
-                                  className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                                  className="w-full p-2 bg-paper text-pencil border-2 border-pencil rounded-md text-sm font-hand placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
                                 />
                               </div>
                             </div>
@@ -1689,23 +1723,23 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                           </div>
                         ) : (
                           /* Multi-Link Mode List */
-                          <div className="space-y-3 bg-white/70 dark:bg-neutral-900/70 p-3 rounded-lg border border-indigo-200 dark:border-indigo-900">
+                          <div className="space-y-3 bg-control/40 p-3 rounded-lg border-2 border-dashed border-indigo-300 dark:border-indigo-700">
                             <span className="text-xs font-bold text-indigo-900 dark:text-indigo-300 font-hand block">
                               🔗 รายการลิงก์โพสต์ในงานนี้ ({multiLinks.length} ลิงก์):
                             </span>
                             
                             <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                               {multiLinks.map((item, idx) => (
-                                <div key={item.id} className="p-2.5 bg-neutral-50 dark:bg-neutral-800 rounded border border-pencil text-xs space-y-2">
+                                <div key={item.id} className="p-2.5 bg-paper rounded-md border-2 border-pencil text-xs space-y-2 shadow-sketch-sm">
                                   <div className="flex items-center justify-between gap-2">
-                                    <span className="font-bold font-hand text-pencil-muted">โพสต์ #{idx + 1}:</span>
+                                    <span className="font-extrabold font-hand text-pencil">โพสต์ #{idx + 1}:</span>
                                     <div className="flex items-center gap-1">
                                       {item.url && (
                                         <>
                                           <button
                                             type="button"
                                             onClick={() => handleFetchStartCount(item.url, idx)}
-                                            className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded font-hand font-bold text-[10px] flex items-center gap-0.5"
+                                            className="px-2 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-0.5 shadow-sketch-sm"
                                             title="ดึงยอดเริ่มของลิงก์นี้"
                                           >
                                             🔍 ดึงเริ่ม
@@ -1722,7 +1756,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                               });
                                               setOcrModalOpen(true);
                                             }}
-                                            className="px-2 py-0.5 bg-sky-100 text-sky-900 rounded font-hand font-bold text-[10px] flex items-center gap-0.5"
+                                            className="px-2 py-0.5 bg-sky-100 hover:bg-sky-200 text-sky-900 border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-0.5 shadow-sketch-sm"
                                           >
                                             📸 สแกน
                                           </button>
@@ -1730,7 +1764,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                             href={getAppDeepLink(item.url)}
                                             target="_blank"
                                             rel="noreferrer"
-                                            className="px-2 py-0.5 bg-neutral-200 text-neutral-800 rounded font-hand font-bold text-[10px] flex items-center gap-0.5"
+                                            className="px-2 py-0.5 bg-neutral-200 hover:bg-neutral-300 text-neutral-800 border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-0.5 shadow-sketch-sm"
                                           >
                                             🚀 เปิด
                                           </a>
@@ -1745,7 +1779,8 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                           }
                                           setMultiLinks(prev => prev.filter((_, i) => i !== idx));
                                         }}
-                                        className="text-red-500 hover:text-red-700 p-0.5 ml-1"
+                                        className="text-red-500 hover:text-red-700 hover:bg-red-100/50 p-1 rounded transition-colors"
+                                        title="ลบลิงก์นี้"
                                       >
                                         <X className="w-3.5 h-3.5" />
                                       </button>
@@ -1762,7 +1797,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                           setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, url: val } : l));
                                         }}
                                         placeholder="วางลิงก์โพสต์..."
-                                        className="w-full p-1.5 bg-transparent border border-pencil rounded text-xs font-hand"
+                                        className="w-full p-2 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
                                       />
                                     </div>
                                     <div className="flex gap-2">
@@ -1775,7 +1810,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                             setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, start_count: val } : l));
                                           }}
                                           placeholder="ยอดเริ่ม"
-                                          className="w-full p-1.5 bg-transparent border border-pencil rounded text-xs font-hand"
+                                          className="w-full p-2 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand text-center placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
                                         />
                                       </div>
                                       <div className="w-1/2">
@@ -1787,7 +1822,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                             setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, target_count: val } : l));
                                           }}
                                           placeholder="เป้าหมาย"
-                                          className="w-full p-1.5 bg-transparent border border-pencil rounded text-xs font-hand font-bold text-amber-700 dark:text-amber-400"
+                                          className="w-full p-2 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand font-bold text-center text-amber-700 dark:text-amber-400 placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
                                         />
                                       </div>
                                     </div>
@@ -1804,7 +1839,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                   { id: Math.random().toString(36).substring(2, 9), url: '', start_count: 0, target_count: 100, current_count: 0, done: 0, status: 'pending' }
                                 ]);
                               }}
-                              className="w-full py-1.5 border-2 border-dashed border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 rounded font-hand font-bold text-xs flex items-center justify-center gap-1 transition-colors"
+                              className="w-full py-2 bg-paper border-2 border-dashed border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 rounded-md font-hand font-bold text-xs flex items-center justify-center gap-1 transition-colors shadow-sketch-sm"
                             >
                               <Plus className="w-3.5 h-3.5" /> เพิ่มลิงก์โพสต์ถัดไป
                             </button>
@@ -1912,7 +1947,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                       <div className="p-4 bg-control/40 sketch-border-sm space-y-4">
                         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                           <div>
-                            <label className="block text-xs font-bold mb-1 font-hand">ประเภทผู้ติดตาม:</label>
+                            <label className="block text-xs font-bold mb-1 font-hand">สัญชาติ / ประเภท:</label>
                             <CustomSelect
                               value={smmServiceType}
                               onChange={(val) => setSmmServiceType(val)}
@@ -1924,7 +1959,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-bold mb-1 font-hand">ยอดผู้ติดตามเดิม:</label>
+                            <label className="block text-xs font-bold mb-1 font-hand">ยอดเริ่มต้นเดิม:</label>
                             <input
                               type="number"
                               value={smmStartCount}
@@ -1957,7 +1992,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                         {(smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม') && (
                           <div className="border-t border-dashed border-pencil pt-3">
                             <span className="text-[10px] font-bold text-pencil-muted font-hand block mb-2">
-                              🌎 ฝั่งบริการต่างชาติ (Foreign Follower Service)
+                              🌎 ฝั่งบริการต่างชาติ (Foreign Service)
                             </span>
                             <div className="grid grid-cols-3 gap-4">
                               <div>
@@ -1995,7 +2030,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                         {(smmServiceType === 'ไทย' || smmServiceType === 'ผสม') && (
                           <div className="border-t border-dashed border-pencil pt-3">
                             <span className="text-[10px] font-bold text-pencil-muted font-hand block mb-2">
-                              🇹🇭 ฝั่งบริการไทย (Thai Follower Service)
+                              🇹🇭 ฝั่งบริการไทย (Thai Service)
                             </span>
                             <div className="grid grid-cols-3 gap-4">
                               <div>
@@ -2418,25 +2453,38 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
 
                       {/* Link Row */}
                       {(job.link || job.client_chat_url) && (
-                        <div className="flex flex-wrap gap-2 text-xs border-t border-dashed border-pencil pt-2">
+                        <div className="flex flex-wrap gap-2 text-xs border-t border-dashed border-pencil pt-2 items-center">
                           {job.link && (
-                            <a 
-                              href={job.link} 
-                              target="_blank" 
-                              rel="noreferrer" 
-                              className="flex items-center gap-1 font-hand text-sky-600 hover:underline"
-                            >
-                              <LinkIcon className="w-3.5 h-3.5" /> ช่องทางบริการ <ExternalLink className="w-2.5 h-2.5" />
-                            </a>
+                            <div className="flex items-center gap-1">
+                              <a 
+                                href={job.link} 
+                                target="_blank" 
+                                rel="noreferrer" 
+                                className="flex items-center gap-1 font-hand text-sky-600 hover:underline font-bold"
+                              >
+                                <LinkIcon className="w-3.5 h-3.5" /> เปิดงาน <ExternalLink className="w-2.5 h-2.5" />
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(job.link);
+                                  showToast('คัดลอกลิงก์งานเรียบร้อยแล้ว!', 'success');
+                                }}
+                                className="px-1.5 py-0.5 bg-neutral-100 hover:bg-neutral-200 text-pencil rounded border border-pencil text-[10px] inline-flex items-center gap-0.5 font-bold shadow-sketch-sm ml-1"
+                                title="คัดลอกลิงก์งาน"
+                              >
+                                <Copy className="w-2.5 h-2.5" /> คัดลอก
+                              </button>
+                            </div>
                           )}
                           {job.client_chat_url && (
                             <a 
                               href={formatChatUrl(job.client_chat_url)} 
                               target="_blank" 
                               rel="noreferrer" 
-                              className="flex items-center gap-1 font-hand text-indigo-600 hover:underline"
+                              className="flex items-center gap-1 font-hand text-indigo-600 hover:underline font-bold"
                             >
-                              <MessageSquare className="w-3.5 h-3.5" /> แชทคุยงาน <ExternalLink className="w-2.5 h-2.5" />
+                              <MessageSquare className="w-3.5 h-3.5" /> คุยงาน <ExternalLink className="w-2.5 h-2.5" />
                             </a>
                           )}
                         </div>
@@ -2499,50 +2547,23 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                       disabled={fetchingJobIds.has(job.id)}
                                     />
                                     {job.link && (
-                                      <>
-                                        <button
-                                          onClick={() => handleAutoFetchCount(job.id, job.link)}
-                                          disabled={fetchingJobIds.has(job.id)}
-                                          className={`px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded border border-amber-300 font-hand text-[9px] flex items-center gap-0.5 font-bold shadow-sketch-sm ${
-                                            fetchingJobIds.has(job.id) ? 'opacity-70 cursor-not-allowed' : ''
-                                          }`}
-                                          title="ดึงยอดผู้ติดตามล่าสุดจากลิงก์อัตโนมัติ"
-                                        >
-                                          {fetchingJobIds.has(job.id) ? (
-                                            <>
-                                              <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                                              <span>ดึง...</span>
-                                            </>
-                                          ) : (
-                                            <span>🤖 ดึงยอด</span>
-                                          )}
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setOcrModalConfig({
-                                              title: `อ่านยอดปัจจุบันจากรูปแคป: ${job.title}`,
-                                              fieldLabel: 'ยอดปัจจุบันที่ตรวจพบ',
-                                              onConfirm: (cnt) => {
-                                                handleUpdateCurrentCount(job.id, cnt);
-                                              }
-                                            });
-                                            setOcrModalOpen(true);
-                                          }}
-                                          className="px-1.5 py-0.5 bg-sky-50 hover:bg-sky-100 text-sky-800 rounded border border-sky-300 font-hand text-[9px] flex items-center gap-0.5 font-bold shadow-sketch-sm"
-                                          title="อ่านยอดจากรูปแคปหน้าจอ (OCR)"
-                                        >
-                                          <span>📸 สแกน</span>
-                                        </button>
-                                        <a
-                                          href={getAppDeepLink(job.link)}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="px-1.5 py-0.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded border border-neutral-300 font-hand text-[9px] flex items-center gap-0.5 font-bold shadow-sketch-sm"
-                                          title="เปิดแอป"
-                                        >
-                                          <span>🚀 แอป</span>
-                                        </a>
-                                      </>
+                                      <button
+                                        onClick={() => handleAutoFetchCount(job.id, job.link)}
+                                        disabled={fetchingJobIds.has(job.id)}
+                                        className={`px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded border border-amber-300 font-hand text-[9px] flex items-center gap-0.5 font-bold shadow-sketch-sm ${
+                                          fetchingJobIds.has(job.id) ? 'opacity-70 cursor-not-allowed' : ''
+                                        }`}
+                                        title="ดึงยอดล่าสุดจากลิงก์อัตโนมัติ"
+                                      >
+                                        {fetchingJobIds.has(job.id) ? (
+                                          <>
+                                            <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                            <span>ดึง...</span>
+                                          </>
+                                        ) : (
+                                          <span>🤖 ดึงยอด</span>
+                                        )}
+                                      </button>
                                     )}
                                   </div>
                                 </div>
@@ -2762,23 +2783,36 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                             </div>
                             <div className="font-extrabold text-sm">{getCleanJobTitle(job)}</div>
                             
-                            <div className="flex gap-1.5 mt-1.5">
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                               {job.link && (
-                                <a 
-                                  href={job.link} 
-                                  target="_blank" 
-                                  rel="noreferrer" 
-                                  className="px-1.5 py-0.5 bg-sky-50 text-sky-700 rounded border border-sky-300 hover:bg-sky-100 text-[10px] inline-flex items-center gap-0.5 font-bold"
-                                >
-                                  <LinkIcon className="w-2.5 h-2.5" /> เปิดงาน
-                                </a>
+                                <>
+                                  <a 
+                                    href={job.link} 
+                                    target="_blank" 
+                                    rel="noreferrer" 
+                                    className="px-1.5 py-0.5 bg-sky-50 text-sky-700 rounded border border-sky-300 hover:bg-sky-100 text-[10px] inline-flex items-center gap-0.5 font-bold shadow-sketch-sm"
+                                  >
+                                    <LinkIcon className="w-2.5 h-2.5" /> เปิดงาน
+                                  </a>
+                                  <button 
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(job.link);
+                                      showToast('คัดลอกลิงก์งานเรียบร้อยแล้ว!', 'success');
+                                    }}
+                                    className="px-1.5 py-0.5 bg-neutral-100 hover:bg-neutral-200 text-pencil rounded border border-pencil text-[10px] inline-flex items-center gap-0.5 font-bold shadow-sketch-sm"
+                                    title="คัดลอกลิงก์งาน"
+                                  >
+                                    <Copy className="w-2.5 h-2.5" /> คัดลอก
+                                  </button>
+                                </>
                               )}
                               {job.client_chat_url && (
                                 <a 
                                   href={formatChatUrl(job.client_chat_url)} 
                                   target="_blank" 
                                   rel="noreferrer" 
-                                  className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-300 hover:bg-indigo-100 text-[10px] inline-flex items-center gap-0.5 font-bold"
+                                  className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-300 hover:bg-indigo-100 text-[10px] inline-flex items-center gap-0.5 font-bold shadow-sketch-sm"
                                 >
                                   <MessageSquare className="w-2.5 h-2.5" /> คุยงาน
                                 </a>
@@ -2907,47 +2941,20 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                             disabled={fetchingJobIds.has(job.id)}
                                           />
                                           {job.link && (
-                                            <>
-                                              <button
-                                                onClick={() => handleAutoFetchCount(job.id, job.link)}
-                                                disabled={fetchingJobIds.has(job.id)}
-                                                className={`px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded border border-amber-300 font-hand text-[9px] flex items-center gap-0.5 font-bold shadow-sketch-sm ${
-                                                  fetchingJobIds.has(job.id) ? 'opacity-70 cursor-not-allowed' : ''
-                                                }`}
-                                                title="ดึงยอดผู้ติดตามล่าสุดจากลิงก์อัตโนมัติ"
-                                              >
-                                                {fetchingJobIds.has(job.id) ? (
-                                                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                                                ) : (
-                                                  <span>🤖 ดึง</span>
-                                                )}
-                                              </button>
-                                              <button
-                                                onClick={() => {
-                                                  setOcrModalConfig({
-                                                    title: `อ่านยอดปัจจุบัน: ${job.title}`,
-                                                    fieldLabel: 'ยอดปัจจุบันที่ตรวจพบ',
-                                                    onConfirm: (cnt) => {
-                                                      handleUpdateCurrentCount(job.id, cnt);
-                                                    }
-                                                  });
-                                                  setOcrModalOpen(true);
-                                                }}
-                                                className="px-1.5 py-0.5 bg-sky-50 hover:bg-sky-100 text-sky-800 rounded border border-sky-300 font-hand text-[9px] font-bold"
-                                                title="สแกนรูปแคปหน้าจอ"
-                                              >
-                                                📸
-                                              </button>
-                                              <a
-                                                href={getAppDeepLink(job.link)}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="px-1.5 py-0.5 bg-neutral-100 text-neutral-800 rounded border border-neutral-300 font-hand text-[9px] font-bold"
-                                                title="เปิดแอป"
-                                              >
-                                                🚀
-                                              </a>
-                                            </>
+                                            <button
+                                              onClick={() => handleAutoFetchCount(job.id, job.link)}
+                                              disabled={fetchingJobIds.has(job.id)}
+                                              className={`px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded border border-amber-300 font-hand text-[9px] flex items-center gap-0.5 font-bold shadow-sketch-sm ${
+                                                fetchingJobIds.has(job.id) ? 'opacity-70 cursor-not-allowed' : ''
+                                              }`}
+                                              title="ดึงยอดล่าสุดจากลิงก์อัตโนมัติ"
+                                            >
+                                              {fetchingJobIds.has(job.id) ? (
+                                                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                              ) : (
+                                                <span>🤖 ดึง</span>
+                                              )}
+                                            </button>
                                           )}
                                         </div>
                                       </div>
@@ -3449,8 +3456,8 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                             }}
                             className={`px-2.5 py-1 text-xs rounded-md font-hand font-bold flex items-center gap-1 transition-all ${
                               isMultiLink 
-                                ? 'bg-indigo-600 text-white shadow-xs' 
-                                : 'bg-white dark:bg-neutral-800 border border-pencil hover:bg-indigo-50 text-pencil'
+                                ? 'bg-indigo-600 text-white shadow-sketch-sm' 
+                                : 'bg-paper border-2 border-pencil hover:bg-indigo-50 text-pencil shadow-sketch-sm'
                             }`}
                           >
                             <Layers className="w-3.5 h-3.5" />
@@ -3469,7 +3476,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                   value={smmLink}
                                   onChange={(e) => handleSmmLinkChange(e.target.value)}
                                   placeholder="วางลิงก์ IG, TikTok เพื่อดึงชื่อผู้ใช้อัตโนมัติ"
-                                  className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                                  className="w-full p-2 bg-paper text-pencil border-2 border-pencil rounded-md text-sm font-hand placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
                                 />
                               </div>
                               <div>
@@ -3479,7 +3486,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                   value={smmAccountName}
                                   onChange={(e) => setSmmAccountName(e.target.value)}
                                   placeholder="ดึงจากลิงก์ หรือพิมพ์เอง เช่น natachaseq"
-                                  className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                                  className="w-full p-2 bg-paper text-pencil border-2 border-pencil rounded-md text-sm font-hand placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
                                 />
                               </div>
                             </div>
@@ -3529,23 +3536,23 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                           </div>
                         ) : (
                           /* Multi-Link Mode List */
-                          <div className="space-y-3 bg-white/70 dark:bg-neutral-900/70 p-3 rounded-lg border border-indigo-200 dark:border-indigo-900">
+                          <div className="space-y-3 bg-control/40 p-3 rounded-lg border-2 border-dashed border-indigo-300 dark:border-indigo-700">
                             <span className="text-xs font-bold text-indigo-900 dark:text-indigo-300 font-hand block">
                               🔗 รายการลิงก์โพสต์ในงานนี้ ({multiLinks.length} ลิงก์):
                             </span>
                             
                             <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                               {multiLinks.map((item, idx) => (
-                                <div key={item.id} className="p-2.5 bg-neutral-50 dark:bg-neutral-800 rounded border border-pencil text-xs space-y-2">
+                                <div key={item.id} className="p-2.5 bg-paper rounded-md border-2 border-pencil text-xs space-y-2 shadow-sketch-sm">
                                   <div className="flex items-center justify-between gap-2">
-                                    <span className="font-bold font-hand text-pencil-muted">โพสต์ #{idx + 1}:</span>
+                                    <span className="font-extrabold font-hand text-pencil">โพสต์ #{idx + 1}:</span>
                                     <div className="flex items-center gap-1">
                                       {item.url && (
                                         <>
                                           <button
                                             type="button"
                                             onClick={() => handleFetchStartCount(item.url, idx)}
-                                            className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded font-hand font-bold text-[10px] flex items-center gap-0.5"
+                                            className="px-2 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-0.5 shadow-sketch-sm"
                                             title="ดึงยอดเริ่มของลิงก์นี้"
                                           >
                                             🔍 ดึงเริ่ม
@@ -3562,7 +3569,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                               });
                                               setOcrModalOpen(true);
                                             }}
-                                            className="px-2 py-0.5 bg-sky-100 text-sky-900 rounded font-hand font-bold text-[10px] flex items-center gap-0.5"
+                                            className="px-2 py-0.5 bg-sky-100 hover:bg-sky-200 text-sky-900 border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-0.5 shadow-sketch-sm"
                                           >
                                             📸 สแกน
                                           </button>
@@ -3570,7 +3577,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                             href={getAppDeepLink(item.url)}
                                             target="_blank"
                                             rel="noreferrer"
-                                            className="px-2 py-0.5 bg-neutral-200 text-neutral-800 rounded font-hand font-bold text-[10px] flex items-center gap-0.5"
+                                            className="px-2 py-0.5 bg-neutral-200 hover:bg-neutral-300 text-neutral-800 border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-0.5 shadow-sketch-sm"
                                           >
                                             🚀 เปิด
                                           </a>
@@ -3585,7 +3592,8 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                           }
                                           setMultiLinks(prev => prev.filter((_, i) => i !== idx));
                                         }}
-                                        className="text-red-500 hover:text-red-700 p-0.5 ml-1"
+                                        className="text-red-500 hover:text-red-700 hover:bg-red-100/50 p-1 rounded transition-colors"
+                                        title="ลบลิงก์นี้"
                                       >
                                         <X className="w-3.5 h-3.5" />
                                       </button>
@@ -3602,7 +3610,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                           setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, url: val } : l));
                                         }}
                                         placeholder="วางลิงก์โพสต์..."
-                                        className="w-full p-1.5 bg-transparent border border-pencil rounded text-xs font-hand"
+                                        className="w-full p-2 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
                                       />
                                     </div>
                                     <div className="flex gap-2">
@@ -3615,7 +3623,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                             setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, start_count: val } : l));
                                           }}
                                           placeholder="ยอดเริ่ม"
-                                          className="w-full p-1.5 bg-transparent border border-pencil rounded text-xs font-hand"
+                                          className="w-full p-2 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand text-center placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
                                         />
                                       </div>
                                       <div className="w-1/2">
@@ -3627,7 +3635,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                             setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, target_count: val } : l));
                                           }}
                                           placeholder="เป้าหมาย"
-                                          className="w-full p-1.5 bg-transparent border border-pencil rounded text-xs font-hand font-bold text-amber-700 dark:text-amber-400"
+                                          className="w-full p-2 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand font-bold text-center text-amber-700 dark:text-amber-400 placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
                                         />
                                       </div>
                                     </div>
@@ -3644,7 +3652,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                   { id: Math.random().toString(36).substring(2, 9), url: '', start_count: 0, target_count: 100, current_count: 0, done: 0, status: 'pending' }
                                 ]);
                               }}
-                              className="w-full py-1.5 border-2 border-dashed border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 rounded font-hand font-bold text-xs flex items-center justify-center gap-1 transition-colors"
+                              className="w-full py-2 bg-paper border-2 border-dashed border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 rounded-md font-hand font-bold text-xs flex items-center justify-center gap-1 transition-colors shadow-sketch-sm"
                             >
                               <Plus className="w-3.5 h-3.5" /> เพิ่มลิงก์โพสต์ถัดไป
                             </button>
@@ -3752,7 +3760,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                       <div className="p-4 bg-control/40 sketch-border-sm space-y-4">
                         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                           <div>
-                            <label className="block text-xs font-bold mb-1 font-hand">ประเภทผู้ติดตาม:</label>
+                            <label className="block text-xs font-bold mb-1 font-hand">สัญชาติ / ประเภท:</label>
                             <CustomSelect
                               value={smmServiceType}
                               onChange={(val) => setSmmServiceType(val)}
@@ -3764,7 +3772,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-bold mb-1 font-hand">ยอดผู้ติดตามเดิม:</label>
+                            <label className="block text-xs font-bold mb-1 font-hand">ยอดเริ่มต้นเดิม:</label>
                             <input
                               type="number"
                               value={smmStartCount}
@@ -3795,11 +3803,11 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                         {/* IG Current Count Calculator */}
                         <div className="bg-indigo-50/50 p-3 rounded border border-indigo-200 grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
                           <div>
-                            <label className="block text-xs font-bold mb-1 font-hand text-indigo-700">คำนวณยอดทำเสร็จจาก IG ปัจจุบัน:</label>
+                            <label className="block text-xs font-bold mb-1 font-hand text-indigo-700">คำนวณยอดทำเสร็จจากยอดปัจจุบัน:</label>
                             <input
                               type="number"
                               value={tempCurrentCount}
-                              placeholder="ระบุยอดติดตามปัจจุบันบน IG..."
+                              placeholder="ระบุยอดปัจจุบัน..."
                               onChange={(e) => {
                                 const valStr = e.target.value;
                                 setTempCurrentCount(valStr);
@@ -3824,7 +3832,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                           </div>
                           <div className="text-[11px] text-indigo-700/80 font-hand space-y-0.5">
                             <p className="font-bold">💡 ตัวช่วยคำนวณอัตโนมัติ:</p>
-                            <p>เมื่อใส่ตัวเลขนี้ ระบบจะเอาไปลบกับ <strong>ยอดเริ่ม ({smmStartCount})</strong> ได้ยอดทำเสร็จ <strong>{Math.max(0, (Number(tempCurrentCount) || 0) - (Number(smmStartCount) || 0))}</strong> คน และจะเอาไปตั้งค่าเป็นยอดทำไปแล้วให้เองทันทีตามประเภทบริการครับ</p>
+                            <p>เมื่อใส่ตัวเลขนี้ ระบบจะเอาไปลบกับ <strong>ยอดเริ่ม ({smmStartCount})</strong> ได้ยอดทำเสร็จ <strong>{Math.max(0, (Number(tempCurrentCount) || 0) - (Number(smmStartCount) || 0))}</strong> และจะเอาไปตั้งค่าเป็นยอดทำไปแล้วให้เองทันทีตามประเภทบริการครับ</p>
                           </div>
                         </div>
 
@@ -3832,7 +3840,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                         {(smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม') && (
                           <div className="border-t border-dashed border-pencil pt-3">
                             <span className="text-[10px] font-bold text-pencil-muted font-hand block mb-2">
-                              🌎 ฝั่งบริการต่างชาติ (Foreign Follower Service)
+                              🌎 ฝั่งบริการต่างชาติ (Foreign Service)
                             </span>
                             <div className="grid grid-cols-3 gap-4">
                               <div>
@@ -3870,7 +3878,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                         {(smmServiceType === 'ไทย' || smmServiceType === 'ผสม') && (
                           <div className="border-t border-dashed border-pencil pt-3">
                             <span className="text-[10px] font-bold text-pencil-muted font-hand block mb-2">
-                              🇹🇭 ฝั่งบริการไทย (Thai Follower Service)
+                              🇹🇭 ฝั่งบริการไทย (Thai Service)
                             </span>
                             <div className="grid grid-cols-3 gap-4">
                               <div>
@@ -4085,6 +4093,32 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
         fieldLabel={ocrModalConfig.fieldLabel}
         onConfirm={ocrModalConfig.onConfirm}
       />
+
+      {/* 🌟 Modern Custom Sketch Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-5 right-5 z-50 animate-bounce-in max-w-sm w-[calc(100vw-40px)] sm:w-auto">
+          <div className={`p-3.5 sketch-border shadow-sketch flex items-start gap-3 rounded-lg ${
+            toast.type === 'success' 
+              ? 'bg-emerald-50 text-emerald-950 border-emerald-700' 
+              : toast.type === 'error'
+              ? 'bg-rose-50 text-rose-950 border-rose-700'
+              : 'bg-amber-50 text-amber-950 border-amber-700'
+          }`}>
+            {toast.type === 'success' && <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />}
+            {toast.type === 'error' && <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />}
+            {toast.type === 'info' && <Info className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />}
+            <div className="flex-1 font-hand text-xs font-bold leading-relaxed">
+              {toast.message}
+            </div>
+            <button 
+              onClick={() => setToast(null)}
+              className="p-0.5 hover:opacity-70 text-pencil -mr-1 -mt-1 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

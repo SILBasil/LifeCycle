@@ -126,11 +126,14 @@ async function fetchTikTokCount(url: string): Promise<number | null> {
 
 // ---------------------- INSTAGRAM FETCHER ----------------------
 async function fetchInstagramCount(url: string): Promise<number | null> {
-  // ดึง Username หรือ Shortcode จาก URL
-  const usernameMatch = url.match(/instagram\.com\/([a-zA-Z0-9._]+)\/?(?:\?.*)?$/i);
-  const username = usernameMatch && !['p', 'reel', 'stories', 'explore'].includes(usernameMatch[1]) ? usernameMatch[1] : null;
+  // ทำความสะอาด URL ลบ query string
+  const cleanUrl = url.split('?')[0].replace(/\/+$/, '');
 
-  // วิธีที่ 1: ลองยิง GraphQL Web Profile Info Endpoint ของ Instagram โดยตรง
+  // ดึง Username หรือ Shortcode จาก URL
+  const usernameMatch = cleanUrl.match(/instagram\.com\/([a-zA-Z0-9._]+)\/?$/i);
+  const username = usernameMatch && !['p', 'reel', 'reels', 'stories', 'explore', 'tv'].includes(usernameMatch[1]) ? usernameMatch[1] : null;
+
+  // วิธีที่ 1: ลองยิง GraphQL Web Profile Info Endpoint ของ Instagram โดยตรง (สำหรับหน้า Profile)
   if (username) {
     try {
       const apiUrl = `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`;
@@ -154,9 +157,9 @@ async function fetchInstagramCount(url: string): Promise<number | null> {
     }
   }
 
-  // วิธีที่ 2: ดึงผ่าน Googlebot / Desktop View เพื่อแกะ Meta Tag
+  // วิธีที่ 2: ดึงผ่าน Googlebot / Desktop View เพื่อแกะ Meta Tag และ JSON Script
   try {
-    const pageRes = await fetch(url, {
+    const pageRes = await fetch(cleanUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -166,6 +169,17 @@ async function fetchInstagramCount(url: string): Promise<number | null> {
 
     if (pageRes.ok) {
       const html = await pageRes.text();
+
+      // 2.1 ตรวจหาใน Script JSON (เช่น edge_media_preview_like หรือ like_count)
+      const jsonLikeMatch = html.match(/"edge_media_preview_like":\s*\{\s*"count":\s*(\d+)/i) ||
+                            html.match(/"edge_liked_by":\s*\{\s*"count":\s*(\d+)/i) ||
+                            html.match(/"like_count":\s*(\d+)/i) ||
+                            html.match(/"edge_followed_by":\s*\{\s*"count":\s*(\d+)/i);
+      if (jsonLikeMatch && jsonLikeMatch[1]) {
+        return parseInt(jsonLikeMatch[1], 10);
+      }
+
+      // 2.2 ตรวจหาใน Meta Description
       const metaMatch = html.match(/<meta[^>]*content="([^"]*)"[^>]*name="description"/i) ||
                          html.match(/<meta[^>]*name="description"[^>]*content="([^"]*)"/i) ||
                          html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]*)"/i);
@@ -175,7 +189,7 @@ async function fetchInstagramCount(url: string): Promise<number | null> {
         const followersMatch = desc.match(/([0-9.,kKmM]+)\s*Followers/i) || desc.match(/ผู้ติดตาม\s*([0-9.,kKmM]+)\s*คน/i);
         if (followersMatch) return parseSocialNumber(followersMatch[1]);
 
-        const likesMatch = desc.match(/([0-9.,kKmM]+)\s*Likes/i) || desc.match(/ถูกใจ\s*([0-9.,kKmM]+)\s*คน/i);
+        const likesMatch = desc.match(/([0-9.,kKmM]+)\s*Likes/i) || desc.match(/ถูกใจ\s*([0-9.,kKmM]+)\s*คน/i) || desc.match(/ถูกใจ\s*([0-9.,kKmM]+)\s*ครั้ง/i);
         if (likesMatch) return parseSocialNumber(likesMatch[1]);
       }
     }

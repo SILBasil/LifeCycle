@@ -31,14 +31,17 @@ export const syncJobsToGoogleSheet = async (jobs: any[], channels: any[], custom
       const channelName = channel ? channel.name : 'ลูกค้าตรง / อื่นๆ';
       
       const startCount = Number(job.start_count) || 0;
-      const foreignAdded = Number(job.foreign_added) || 0;
-      const foreignGift = Number(job.foreign_gift) || 0;
-      const foreignDone = Number(job.foreign_done) || 0;
+      const isForeign = job.service_type === 'ต่างชาติ' || job.service_type === 'ผสม';
+      const isThai = job.service_type === 'ไทย' || job.service_type === 'ผสม';
+
+      const foreignAdded = isForeign ? (Number(job.foreign_added) || 0) : 0;
+      const foreignGift = isForeign ? (Number(job.foreign_gift) || 0) : 0;
+      const foreignDone = isForeign ? (Number(job.foreign_done) || 0) : 0;
       const foreignRemain = (foreignAdded + foreignGift) - foreignDone;
 
-      const thaiAdded = Number(job.thai_added) || 0;
-      const thaiGift = Number(job.thai_gift) || 0;
-      const thaiDone = Number(job.thai_done) || 0;
+      const thaiAdded = isThai ? (Number(job.thai_added) || 0) : 0;
+      const thaiGift = isThai ? (Number(job.thai_gift) || 0) : 0;
+      const thaiDone = isThai ? (Number(job.thai_done) || 0) : 0;
       const thaiRemain = (thaiAdded + thaiGift) - thaiDone;
 
       const totalTarget = startCount + foreignAdded + foreignGift + thaiAdded + thaiGift;
@@ -151,14 +154,17 @@ export const downloadJobsAsCSV = (jobs: any[], _channels: any[]): void => {
     const price = Number(job.price) || 0;
     const cost = Number(job.cost) || 0;
     const startCount = Number(job.start_count) || 0;
-    const foreignAdded = Number(job.foreign_added) || 0;
-    const foreignGift = Number(job.foreign_gift) || 0;
-    const foreignDone = Number(job.foreign_done) || 0;
+    const isForeign = job.service_type === 'ต่างชาติ' || job.service_type === 'ผสม';
+    const isThai = job.service_type === 'ไทย' || job.service_type === 'ผสม';
+
+    const foreignAdded = isForeign ? (Number(job.foreign_added) || 0) : 0;
+    const foreignGift = isForeign ? (Number(job.foreign_gift) || 0) : 0;
+    const foreignDone = isForeign ? (Number(job.foreign_done) || 0) : 0;
     const foreignRemain = (foreignAdded + foreignGift) - foreignDone;
 
-    const thaiAdded = Number(job.thai_added) || 0;
-    const thaiGift = Number(job.thai_gift) || 0;
-    const thaiDone = Number(job.thai_done) || 0;
+    const thaiAdded = isThai ? (Number(job.thai_added) || 0) : 0;
+    const thaiGift = isThai ? (Number(job.thai_gift) || 0) : 0;
+    const thaiDone = isThai ? (Number(job.thai_done) || 0) : 0;
     const thaiRemain = (thaiAdded + thaiGift) - thaiDone;
 
     const totalTarget = startCount + foreignAdded + foreignGift + thaiAdded + thaiGift;
