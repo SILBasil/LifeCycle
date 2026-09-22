@@ -120,18 +120,23 @@ async function fetchTikTokCount(url: string): Promise<number | null> {
   return null;
 }
 
+// ---------------------- INSTAGRAM FETCHER (MULTI-FALLBACK) ----------------------
 async function fetchInstagramCount(url: string): Promise<number | null> {
+  // ทำความสะอาด URL และตัด Query String
   const cleanUrl = url.split('?')[0].replace(/\/+$/, '');
   const usernameMatch = cleanUrl.match(/instagram\.com\/([a-zA-Z0-9._]+)\/?$/i);
-  const username = usernameMatch && !['p', 'reel', 'reels', 'stories', 'explore', 'tv'].includes(usernameMatch[1]) ? usernameMatch[1] : null;
+  const username = usernameMatch && !['p', 'reel', 'reels', 'stories', 'explore', 'tv', 'share'].includes(usernameMatch[1]) 
+    ? usernameMatch[1] 
+    : null;
 
+  // 1. วิธีที่ 1: ดึงผ่าน Instagram GraphQL API (Web Profile Info)
   if (username) {
     try {
       const apiUrl = `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`;
       const apiRes = await fetch(apiUrl, {
         headers: {
           'X-IG-App-ID': '936619743392459',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
           'Accept': '*/*',
           'Sec-Fetch-Site': 'same-origin',
         }
@@ -139,44 +144,68 @@ async function fetchInstagramCount(url: string): Promise<number | null> {
       if (apiRes.ok) {
         const data: any = await apiRes.json();
         const user = data?.data?.user;
-        if (user && user.edge_followed_by && typeof user.edge_followed_by.count === 'number') {
+        if (user?.edge_followed_by && typeof user.edge_followed_by.count === 'number') {
           return user.edge_followed_by.count;
         }
       }
     } catch (_) {}
   }
 
+  // 2. วิธีที่ 2: ใช้ User-Agent ของ Meta/Facebook External Hit Crawler (ที่ IG อนุญาตให้ดึง Meta Description)
+  const crawlerHeaders = [
+    { 'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.html)', 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' },
+    { 'User-Agent': 'Twitterbot/1.0', 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' },
+    { 'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)', 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' }
+  ];
+
+  for (const headers of crawlerHeaders) {
+    try {
+      const pageRes = await fetch(cleanUrl, { headers });
+      if (pageRes.ok) {
+        const html = await pageRes.text();
+
+        // 2.1 ตรวจหาใน Script JSON
+        const jsonLikeMatch = html.match(/"edge_media_preview_like":\s*\{\s*"count":\s*(\d+)/i) ||
+                              html.match(/"edge_liked_by":\s*\{\s*"count":\s*(\d+)/i) ||
+                              html.match(/"like_count":\s*(\d+)/i) ||
+                              html.match(/"edge_followed_by":\s*\{\s*"count":\s*(\d+)/i);
+        if (jsonLikeMatch && jsonLikeMatch[1]) {
+          return parseInt(jsonLikeMatch[1], 10);
+        }
+
+        // 2.2 ตรวจหาใน Meta Tags
+        const metaMatch = html.match(/<meta[^>]*content="([^"]*)"[^>]*name="description"/i) ||
+                          html.match(/<meta[^>]*name="description"[^>]*content="([^"]*)"/i) ||
+                          html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]*)"/i);
+        
+        if (metaMatch && metaMatch[1]) {
+          const desc = metaMatch[1];
+          const followersMatch = desc.match(/([0-9.,kKmM]+)\s*Followers/i) || desc.match(/ผู้ติดตาม\s*([0-9.,kKmM]+)\s*คน/i);
+          if (followersMatch) return parseSocialNumber(followersMatch[1]);
+
+          const likesMatch = desc.match(/([0-9.,kKmM]+)\s*Likes/i) || desc.match(/ถูกใจ\s*([0-9.,kKmM]+)\s*คน/i) || desc.match(/ถูกใจ\s*([0-9.,kKmM]+)\s*ครั้ง/i);
+          if (likesMatch) return parseSocialNumber(likesMatch[1]);
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 3. วิธีที่ 3: ดึงผ่าน Instagram Embed Page (หน้าสาธารณะที่ไม่ติด Login Wall)
   try {
-    const pageRes = await fetch(cleanUrl, {
+    const embedUrl = `${cleanUrl}/embed/captioned/`;
+    const embedRes = await fetch(embedUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
       }
     });
-
-    if (pageRes.ok) {
-      const html = await pageRes.text();
-
-      const jsonLikeMatch = html.match(/"edge_media_preview_like":\s*\{\s*"count":\s*(\d+)/i) ||
-                            html.match(/"edge_liked_by":\s*\{\s*"count":\s*(\d+)/i) ||
-                            html.match(/"like_count":\s*(\d+)/i) ||
-                            html.match(/"edge_followed_by":\s*\{\s*"count":\s*(\d+)/i);
-      if (jsonLikeMatch && jsonLikeMatch[1]) {
-        return parseInt(jsonLikeMatch[1], 10);
-      }
-
-      const metaMatch = html.match(/<meta[^>]*content="([^"]*)"[^>]*name="description"/i) ||
-                         html.match(/<meta[^>]*name="description"[^>]*content="([^"]*)"/i) ||
-                         html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]*)"/i);
-      
-      if (metaMatch && metaMatch[1]) {
-        const desc = metaMatch[1];
-        const followersMatch = desc.match(/([0-9.,kKmM]+)\s*Followers/i) || desc.match(/ผู้ติดตาม\s*([0-9.,kKmM]+)\s*คน/i);
-        if (followersMatch) return parseSocialNumber(followersMatch[1]);
-
-        const likesMatch = desc.match(/([0-9.,kKmM]+)\s*Likes/i) || desc.match(/ถูกใจ\s*([0-9.,kKmM]+)\s*คน/i) || desc.match(/ถูกใจ\s*([0-9.,kKmM]+)\s*ครั้ง/i);
-        if (likesMatch) return parseSocialNumber(likesMatch[1]);
+    if (embedRes.ok) {
+      const embedHtml = await embedRes.text();
+      const countMatch = embedHtml.match(/class="[^"]*LikesAndComments[^"]*"[^>]*>([\s\S]*?)<\/div>/i) ||
+                         embedHtml.match(/([0-9.,kKmM]+)\s*(?:likes|ถูกใจ|followers|ผู้ติดตาม)/i);
+      if (countMatch && countMatch[1]) {
+        const parsed = parseSocialNumber(countMatch[1]);
+        if (parsed !== null) return parsed;
       }
     }
   } catch (_) {}
