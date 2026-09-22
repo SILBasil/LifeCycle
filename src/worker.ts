@@ -92,7 +92,7 @@ async function handleFetchCount(request: Request): Promise<Response> {
 
 async function fetchTikTokCount(url: string): Promise<number | null> {
   const headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
     'Accept-Language': 'th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7',
   };
@@ -102,17 +102,33 @@ async function fetchTikTokCount(url: string): Promise<number | null> {
     if (!response.ok) return null;
     const html = await response.text();
 
-    const followerMatch = html.match(/"followerCount":\s*(\d+)/);
-    if (followerMatch && followerMatch[1]) return parseInt(followerMatch[1], 10);
-
+    // 1. ตรวจหายอดวิว (playCount) หากเป็นคลิปวิดีโอ
+    const playMatch = html.match(/"playCount":\s*(\d+)/);
+    // 2. ตรวจหายอดไลก์ (diggCount)
     const diggMatch = html.match(/"diggCount":\s*(\d+)/);
+    // 3. ตรวจหายอดแชร์ (shareCount)
+    const shareMatch = html.match(/"shareCount":\s*(\d+)/);
+    // 4. ตรวจหายอดผู้ติดตาม (followerCount)
+    const followerMatch = html.match(/"followerCount":\s*(\d+)/);
+
+    // ตรวจสอบตามประเภทลิงก์
+    if (url.includes('/video/')) {
+      if (diggMatch && diggMatch[1]) return parseInt(diggMatch[1], 10);
+      if (playMatch && playMatch[1]) return parseInt(playMatch[1], 10);
+      if (shareMatch && shareMatch[1]) return parseInt(shareMatch[1], 10);
+    } else {
+      if (followerMatch && followerMatch[1]) return parseInt(followerMatch[1], 10);
+    }
+
+    if (followerMatch && followerMatch[1]) return parseInt(followerMatch[1], 10);
     if (diggMatch && diggMatch[1]) return parseInt(diggMatch[1], 10);
+    if (playMatch && playMatch[1]) return parseInt(playMatch[1], 10);
 
     const metaMatch = html.match(/<meta[^>]*content="([^"]*)"[^>]*name="description"/i) ||
                        html.match(/<meta[^>]*name="description"[^>]*content="([^"]*)"/i);
     if (metaMatch && metaMatch[1]) {
       const desc = metaMatch[1];
-      const m = desc.match(/([0-9.,kKmM]+)\s*(?:Followers|ผู้ติดตาม|Likes|ถูกใจ)/i);
+      const m = desc.match(/([0-9.,kKmM]+)\s*(?:Followers|ผู้ติดตาม|Likes|ถูกใจ|Views|ยอดวิว|รับชม)/i);
       if (m && m[1]) return parseSocialNumber(m[1]);
     }
   } catch (_) {}
