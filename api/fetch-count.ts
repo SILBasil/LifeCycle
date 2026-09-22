@@ -70,7 +70,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ success: false, error: 'ยังไม่รองรับแพลตฟอร์มนี้' });
     }
 
-    return res.status(404).json({
+    return res.status(200).json({
       success: false,
       error: `ไม่สามารถแกะยอดจากลิงก์ ${platform} นี้ได้โดยตรง (อาจเป็นบัญชีส่วนตัวหรือติดหน้าล็อกอิน) แนะนำให้ใช้ปุ่มเปิดแอปหรือสแกนภาพแคปหน้าจอ`,
       platform

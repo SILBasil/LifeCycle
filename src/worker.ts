@@ -77,7 +77,7 @@ async function handleFetchCount(request: Request): Promise<Response> {
         error: `ไม่สามารถแกะยอดจากลิงก์ ${platform} นี้ได้โดยตรง (อาจเป็นบัญชีส่วนตัวหรือติดหน้าล็อกอิน)`,
         platform
       }),
-      { status: 404, headers: corsHeaders }
+      { status: 200, headers: corsHeaders }
     );
   } catch (err: any) {
     return new Response(
