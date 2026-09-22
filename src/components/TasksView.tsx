@@ -4096,7 +4096,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
 
       {/* 🌟 Modern Custom Sketch Toast Notification */}
       {toast && (
-        <div className="fixed bottom-5 right-5 z-50 animate-bounce-in max-w-sm w-[calc(100vw-40px)] sm:w-auto">
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 sm:top-5 sm:right-5 sm:left-auto sm:translate-x-0 z-[9999] animate-bounce-in max-w-sm w-[calc(100vw-32px)] sm:w-auto pointer-events-auto">
           <div className={`p-3.5 sketch-border shadow-sketch flex items-start gap-3 rounded-lg ${
             toast.type === 'success' 
               ? 'bg-emerald-50 text-emerald-950 border-emerald-700' 
