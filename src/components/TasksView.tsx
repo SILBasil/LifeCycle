@@ -18,6 +18,19 @@ import {
 import { formatChatUrl } from '../lib/chatUtils';
 import { fetchSocialCount, getAppDeepLink, type JobLinkItem } from '../lib/socialFetcher';
 import { OCRScannerModal } from './OCRScannerModal';
+import { DevJobFields } from './DevJobFields';
+import {
+  type DevJobInfo,
+  createEmptyDevInfo,
+  parseDevInfo,
+  serializeDevInfo,
+  stripMetaBlocks,
+  validateDevInfo,
+  getPaidAmount,
+  getDaysUntilDue,
+  getMilestoneProgress,
+  DEV_PROJECT_TYPES,
+} from '../lib/devJobInfo';
 
 function parseJobLinks(notes: string | null | undefined): JobLinkItem[] | null {
   if (!notes) return null;
@@ -177,6 +190,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
   const [serviceSaving, setServiceSaving] = useState(false);
 
   // Filters for jobs (default status is 'กำลังดำเนินการ')
+  const [filterJobCategory, setFilterJobCategory] = useState<'all' | 'fastwork_smm' | 'other_freelance'>('all');
   const [filterChannelId, setFilterChannelId] = useState<string>('all');
   const [filterJobStatus, setFilterJobStatus] = useState<string>('กำลังดำเนินการ');
   const [filterPlatform, setFilterPlatform] = useState<string>('all');
@@ -215,6 +229,54 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
   const [jobNotes, setJobNotes] = useState('');
   const [smmProviderInfo, setSmmProviderInfo] = useState('');
   const [jobStatus, setJobStatus] = useState<string>('กำลังดำเนินการ');
+
+  // 💻 Dev / programming job details (stored in notes as [DEVINFO])
+  const [devInfo, setDevInfo] = useState<DevJobInfo>(createEmptyDevInfo());
+
+  const switchJobCategory = (cat: 'fastwork_smm' | 'other_freelance') => {
+    setJobCategory(cat);
+    if (cat === 'other_freelance') {
+      // SMM service names (e.g. "ig : ฟอล") are not valid project types
+      if (!smmPlatform || /\s:\s/.test(smmPlatform)) setSmmPlatform('');
+    } else if (!smmPlatform || DEV_PROJECT_TYPES.includes(smmPlatform)) {
+      setSmmPlatform('ig : ฟอล');
+    }
+  };
+
+  /** Builds category-specific payload fields. Returns null (and toasts) when invalid. */
+  const buildCategoryPayload = (finalNotes: string): Record<string, any> | null => {
+    if (jobCategory !== 'other_freelance') return {};
+    const errors = validateDevInfo(devInfo, {
+      projectType: smmPlatform || '',
+      price: Number(price) || 0,
+      startDate,
+      status: jobStatus,
+    });
+    if (errors.length > 0) {
+      showToast('ข้อมูลยังไม่ครบ: ' + errors.join(' • '), 'error');
+      return null;
+    }
+    const msProgress = getMilestoneProgress(devInfo);
+    const progress = Math.min(100, Math.max(0, msProgress ?? (Number(smmThaiDone) || 0)));
+    const isDone = jobStatus === 'เสร็จสิ้น' || jobStatus === 'เสร็จสิ้นปิดงานแล้ว';
+    return {
+      notes: serializeDevInfo(stripMetaBlocks(finalNotes), devInfo),
+      platform: smmPlatform.trim(),
+      service_type: null,
+      link: devInfo.productionUrl.trim() || devInfo.stagingUrl.trim() || null,
+      account_name: null,
+      provider_info: devInfo.repoUrl.trim() || null,
+      start_count: 0,
+      target_count: 0,
+      foreign_added: 0,
+      foreign_gift: 0,
+      foreign_done: 0,
+      thai_added: 0,
+      thai_gift: 0,
+      thai_done: isDone ? 100 : progress,
+      end_date: endDate || (isDone ? new Date().toISOString().split('T')[0] : null),
+    };
+  };
 
   // Multi-link & OCR states
   const [ocrModalOpen, setOcrModalOpen] = useState(false);
@@ -583,6 +645,10 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
         provider_info: smmProviderInfo.trim() || null
       };
 
+      const extra = buildCategoryPayload(finalNotes);
+      if (!extra) return;
+      Object.assign(payload, extra);
+
       const { error } = await supabase.from('freelance_jobs').insert(payload);
 
       if (error) throw error;
@@ -613,6 +679,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
       setJobStatus('กำลังดำเนินการ');
       setIsMultiLink(false);
       setMultiLinks([]);
+      setDevInfo(createEmptyDevInfo());
       setShowAddJobForm(false);
       showToast('บันทึกรายละเอียดงานใหม่สำเร็จ!', 'success');
       fetchJobs();
@@ -669,6 +736,10 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
         provider_info: smmProviderInfo.trim() || null
       };
 
+      const extra = buildCategoryPayload(finalNotes);
+      if (!extra) return;
+      Object.assign(payload, extra);
+
       const { error } = await supabase
         .from('freelance_jobs')
         .update(payload)
@@ -706,6 +777,8 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
       setJobStatus('กำลังดำเนินการ');
       setIsMultiLink(false);
       setMultiLinks([]);
+      setDevInfo(createEmptyDevInfo());
+      showToast('บันทึกการแก้ไขเรียบร้อยแล้ว', 'success');
     } catch (err) {
       alert('เกิดข้อผิดพลาดในการอัปเดตงาน');
       console.error('Error updating freelance job:', err);
@@ -727,7 +800,8 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
     setJobCategory(job.category || 'fastwork_smm');
     setSmmLink(job.link || '');
     setSmmAccountName(job.account_name || '');
-    setSmmPlatform(job.platform || 'ig : ฟอล');
+    setSmmPlatform(job.platform || (job.category === 'other_freelance' ? '' : 'ig : ฟอล'));
+    setDevInfo(parseDevInfo(job.notes) || createEmptyDevInfo());
     setSmmServiceType(job.service_type || 'ไทย');
     setSmmStartCount(job.start_count ? String(job.start_count) : '');
     setSmmTargetCount(job.target_count ? String(job.target_count) : '');
@@ -743,12 +817,11 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
     if (parsedLinks && parsedLinks.length > 0) {
       setIsMultiLink(true);
       setMultiLinks(parsedLinks);
-      const cleanNotes = (job.notes || '').replace(/\[MULTILINKS\][\s\S]*?\[\/MULTILINKS\]/g, '').trim();
-      setJobNotes(cleanNotes);
+      setJobNotes(stripMetaBlocks(job.notes));
     } else {
       setIsMultiLink(false);
       setMultiLinks([]);
-      setJobNotes(job.notes || '');
+      setJobNotes(stripMetaBlocks(job.notes));
     }
 
     setSmmProviderInfo(job.provider_info || '');
@@ -1148,7 +1221,9 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
         serviceType.includes(q);
     }
 
-    return channelMatch && statusMatch && platformMatch && searchMatch;
+    const categoryMatch = filterJobCategory === 'all' || (job.category || 'fastwork_smm') === filterJobCategory;
+
+    return channelMatch && statusMatch && platformMatch && categoryMatch && searchMatch;
   });
 
   // Freelance stats summary
@@ -1257,6 +1332,261 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
       cleanVal = formatChatUrl(cleanVal);
     }
     setClientChatUrl(cleanVal);
+  };
+
+  // 🎨 General / Dev (web, dashboard, database, API) template — shared by Add & Edit modals
+  const renderGeneralFields = () => (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-bold mb-1 font-hand">ชื่อโปรเจกต์: <span className="text-rose-500">*</span></label>
+          <input
+            type="text"
+            value={jobTitle}
+            onChange={(e) => setJobTitle(e.target.value)}
+            placeholder="เช่น ระบบหลังบ้านร้าน TRC, Dashboard ยอดขาย"
+            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+            required
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-bold mb-1 font-hand flex justify-between items-center">
+            <span>ช่องทางรับงาน:</span>
+            <button
+              type="button"
+              onClick={() => setShowChannelManage(true)}
+              className="text-[10px] text-amber-600 hover:underline flex items-center gap-0.5 font-bold font-hand"
+            >
+              <Tag className="w-2.5 h-2.5" /> จัดการช่องทาง
+            </button>
+          </label>
+          <CustomSelect
+            value={selectedChannelId}
+            onChange={(val) => setSelectedChannelId(val)}
+            options={[
+              { value: '', label: '-- ลูกค้าโดยตรง / อื่นๆ --' },
+              ...channels.map((chan) => ({ value: chan.id, label: chan.name }))
+            ]}
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-bold mb-1 font-hand">ชื่อผู้ว่าจ้าง / บริษัท:</label>
+          <input
+            type="text"
+            value={clientName}
+            onChange={(e) => setClientName(e.target.value)}
+            placeholder="เช่น คุณสมชาย / บจก. ABC"
+            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-bold mb-1 font-hand">ลิงก์แชทคุยงาน / ID แชท Fastwork:</label>
+          <input
+            type="text"
+            value={clientChatUrl}
+            onChange={(e) => handleChatUrlChange(e.target.value)}
+            placeholder="วางลิงก์ หรือพิมพ์แค่ ID เช่น rr43tfs, 123456"
+            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+          />
+        </div>
+      </div>
+
+      <DevJobFields
+        info={devInfo}
+        onChange={setDevInfo}
+        projectType={smmPlatform}
+        setProjectType={setSmmPlatform}
+        price={price}
+        setPrice={setPrice}
+        cost={cost}
+        setCost={setCost}
+        progress={smmThaiDone}
+        setProgress={setSmmThaiDone}
+      />
+    </div>
+  );
+
+  // 💻 Toggle milestone status directly from list view
+  const handleToggleJobMilestone = async (job: any, milestoneId: string, field: 'done' | 'paid') => {
+    const info = parseDevInfo(job.notes);
+    if (!info) return;
+
+    const updatedMilestones = (info.milestones || []).map(m => {
+      if (m.id === milestoneId) {
+        return { ...m, [field]: !m[field] };
+      }
+      return m;
+    });
+
+    const nextInfo: DevJobInfo = { ...info, milestones: updatedMilestones };
+    const cleanNotes = stripMetaBlocks(job.notes);
+    const newNotes = serializeDevInfo(cleanNotes, nextInfo);
+    const msProgress = getMilestoneProgress(nextInfo);
+
+    const updatePayload: any = { notes: newNotes };
+    if (msProgress !== null) {
+      updatePayload.thai_done = msProgress;
+      if (msProgress === 100 && (job.status === 'กำลังดำเนินการ' || job.status === 'ยังไม่เริ่ม')) {
+        updatePayload.status = 'เสร็จสิ้น';
+        if (!job.end_date) {
+          updatePayload.end_date = new Date().toISOString().split('T')[0];
+        }
+      }
+    }
+
+    try {
+      const { error } = await supabase
+        .from('freelance_jobs')
+        .update(updatePayload)
+        .eq('id', job.id)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      setJobs(prev => prev.map(j => j.id === job.id ? { ...j, ...updatePayload } : j));
+      showToast(field === 'done' ? '✓ อัปเดตสถานะส่งมอบงวดงานแล้ว' : '฿ บันทึกการรับเงินงวดงานแล้ว', 'success');
+    } catch (err: any) {
+      console.error('Error toggling milestone:', err);
+      showToast('เกิดข้อผิดพลาดในการอัปเดตงวดงาน', 'error');
+    }
+  };
+
+  // 💻 Compact summary for dev jobs in list views (Desktop & Mobile)
+  const renderDevSummary = (job: any) => {
+    const info = parseDevInfo(job.notes);
+    if (!info) {
+      return <span className="text-pencil-muted text-xs">งานบริการ / ทั่วไป (ตามขอบเขต)</span>;
+    }
+    const priceNum = Number(job.price) || 0;
+    const costNum = Number(job.cost) || 0;
+    const profitNum = priceNum - costNum;
+    const paid = getPaidAmount(info);
+    const outstanding = Math.max(0, priceNum - paid);
+    const isClosed = job.status === 'เสร็จสิ้น' || job.status === 'เสร็จสิ้นปิดงานแล้ว';
+    const daysLeft = isClosed ? null : getDaysUntilDue(info.dueDate);
+    const msDone = info.milestones.filter(m => m.done).length;
+    const msPaid = info.milestones.filter(m => m.paid).length;
+    const linkCls = 'px-1.5 py-0.5 rounded border text-[9px] font-bold inline-flex items-center gap-0.5 shadow-sketch-sm transition-colors';
+
+    return (
+      <div className="space-y-1.5 text-[10px] font-hand">
+        {/* Tech Stack */}
+        {info.techStack.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {info.techStack.slice(0, 4).map(t => (
+              <span key={t} className="px-1.5 py-0.2 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded font-bold">
+                {t}
+              </span>
+            ))}
+            {info.techStack.length > 4 && (
+              <span className="text-pencil-muted text-[9px] font-bold">+{info.techStack.length - 4}</span>
+            )}
+          </div>
+        )}
+
+        {/* Scope brief */}
+        {info.scope && (
+          <div className="text-pencil-muted text-[10px] line-clamp-2 leading-tight bg-control/20 p-1 rounded">
+            <strong className="text-pencil">🎯 Scope:</strong> {info.scope}
+          </div>
+        )}
+
+        {/* Deadline countdown */}
+        {daysLeft !== null && (
+          <div className={`font-bold flex items-center gap-1 ${
+            daysLeft < 0 ? 'text-rose-600' : daysLeft <= 3 ? 'text-amber-600' : 'text-emerald-700'
+          }`}>
+            <span>📅 ส่ง {new Date(info.dueDate).toLocaleDateString('th-TH')}</span>
+            <span>{daysLeft < 0 ? `(เลย ${Math.abs(daysLeft)} วัน!)` : daysLeft === 0 ? '(ครบกำหนดวันนี้!)' : `(เหลือ ${daysLeft} วัน)`}</span>
+          </div>
+        )}
+
+        {/* Interactive Milestones */}
+        {info.milestones.length > 0 ? (
+          <div className="space-y-1 pt-1 border-t border-dashed border-neutral-300 dark:border-neutral-700">
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="font-extrabold text-indigo-900 dark:text-indigo-300">
+                🧱 งวดงาน (ส่ง {msDone}/{info.milestones.length} • รับเงิน {msPaid}/{info.milestones.length}):
+              </span>
+            </div>
+            <div className="space-y-1 max-h-36 overflow-y-auto pr-0.5">
+              {info.milestones.map((m, idx) => (
+                <div key={m.id} className="flex items-center justify-between gap-1 p-1 bg-paper rounded border border-neutral-300 dark:border-neutral-700 text-[10px] shadow-xs">
+                  <span className="truncate max-w-[130px] font-bold text-pencil" title={m.title}>
+                    #{idx + 1} {m.title} {m.amount > 0 ? `(฿${m.amount.toLocaleString()})` : ''}
+                  </span>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleJobMilestone(job, m.id, 'done')}
+                      className={`px-1.5 py-0.2 rounded text-[9px] font-bold border transition-colors ${
+                        m.done 
+                          ? 'bg-indigo-100 text-indigo-900 border-indigo-300 hover:bg-indigo-200' 
+                          : 'bg-neutral-100 text-pencil-muted border-neutral-300 hover:bg-neutral-200'
+                      }`}
+                      title="กดเพื่อสลับสถานะ: ส่งงานแล้ว / ยังไม่ส่ง"
+                    >
+                      {m.done ? '✓ ส่งแล้ว' : 'รอส่ง'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleJobMilestone(job, m.id, 'paid')}
+                      className={`px-1.5 py-0.2 rounded text-[9px] font-bold border transition-colors ${
+                        m.paid 
+                          ? 'bg-emerald-100 text-emerald-900 border-emerald-300 hover:bg-emerald-200' 
+                          : 'bg-neutral-100 text-pencil-muted border-neutral-300 hover:bg-neutral-200'
+                      }`}
+                      title="กดเพื่อสลับสถานะ: รับเงินแล้ว / ค้างรับ"
+                    >
+                      {m.paid ? '฿ รับแล้ว' : 'รอรับ'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          /* Single payment info if no milestones */
+          priceNum > 0 && (
+            <div className="flex items-center gap-2 pt-0.5">
+              <span className="text-emerald-700 font-bold">รับแล้ว ฿{paid.toLocaleString()}</span>
+              {outstanding > 0 && <span className="text-amber-700 font-bold">· ค้าง ฿{outstanding.toLocaleString()}</span>}
+              {costNum > 0 && <span className="text-pencil-muted">· กำไร ฿{profitNum.toLocaleString()}</span>}
+            </div>
+          )
+        )}
+
+        {/* Warnings */}
+        {info.revisionsUsed > info.revisionsIncluded && (
+          <div className="text-rose-600 font-bold text-[9px]">
+            ⚠️ แก้ไขเกินโควต้า ({info.revisionsUsed}/{info.revisionsIncluded} รอบ)
+          </div>
+        )}
+
+        {/* Project Links */}
+        <div className="flex flex-wrap gap-1 pt-0.5">
+          {info.repoUrl && (
+            <a href={info.repoUrl} target="_blank" rel="noreferrer" className={`${linkCls} bg-neutral-100 dark:bg-neutral-800 border-neutral-300 text-pencil hover:bg-neutral-200`}>
+              Repo
+            </a>
+          )}
+          {info.stagingUrl && (
+            <a href={info.stagingUrl} target="_blank" rel="noreferrer" className={`${linkCls} bg-sky-50 dark:bg-sky-950/40 border-sky-300 text-sky-700 hover:bg-sky-100`}>
+              Demo
+            </a>
+          )}
+          {info.productionUrl && (
+            <a href={info.productionUrl} target="_blank" rel="noreferrer" className={`${linkCls} bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 text-emerald-700 hover:bg-emerald-100`}>
+              Live
+            </a>
+          )}
+          {info.docsUrl && (
+            <a href={info.docsUrl} target="_blank" rel="noreferrer" className={`${linkCls} bg-violet-50 dark:bg-violet-950/40 border-violet-300 text-violet-700 hover:bg-violet-100`}>
+              Docs
+            </a>
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -1595,7 +1925,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                   <div className="grid grid-cols-2 gap-2 bg-control/30 p-1 sketch-border-sm">
                     <button
                       type="button"
-                      onClick={() => setJobCategory('fastwork_smm')}
+                      onClick={() => switchJobCategory('fastwork_smm')}
                       className={`py-2 text-xs sm:text-sm font-extrabold font-hand rounded transition-all text-center ${
                         jobCategory === 'fastwork_smm' 
                           ? 'bg-amber-100 text-amber-900 border border-pencil shadow-sketch-sm' 
@@ -1606,7 +1936,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setJobCategory('other_freelance')}
+                      onClick={() => switchJobCategory('other_freelance')}
                       className={`py-2 text-xs sm:text-sm font-extrabold font-hand rounded transition-all text-center ${
                         jobCategory === 'other_freelance' 
                           ? 'bg-indigo-100 text-indigo-900 border border-pencil shadow-sketch-sm' 
@@ -2066,143 +2396,98 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                       </div>
                     </div>
                   ) : (
-                    /* 🎨 GENERAL FREELANCE TEMPLATE FIELDS */
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold mb-1 font-hand">ชื่องาน / ลูกค้า:</label>
-                          <input
-                            type="text"
-                            value={jobTitle}
-                            onChange={(e) => setJobTitle(e.target.value)}
-                            placeholder="เช่น พัฒนาเว็บ TRC, Dashboard ขายของ"
-                            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold mb-1 font-hand flex justify-between items-center">
-                            <span>ช่องทางรับงาน:</span>
-                            <button
-                              type="button"
-                              onClick={() => setShowChannelManage(true)}
-                              className="text-[10px] text-amber-600 hover:underline flex items-center gap-0.5 font-bold font-hand"
-                            >
-                              <Tag className="w-2.5 h-2.5" /> จัดการช่องทาง
-                            </button>
-                          </label>
-                          <CustomSelect
-                            value={selectedChannelId}
-                            onChange={(val) => setSelectedChannelId(val)}
-                            options={[
-                              { value: '', label: '-- ลูกค้าโดยตรง / อื่นๆ --' },
-                              ...channels.map((chan) => ({ value: chan.id, label: chan.name }))
-                            ]}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold mb-1 font-hand">ประเภทงาน / บริการ:</label>
-                          <input
-                            type="text"
-                            value={smmPlatform}
-                            onChange={(e) => setSmmPlatform(e.target.value)}
-                            placeholder="เช่น แดชบอร์ดระบบ, งานดีไซน์"
-                            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold mb-1 font-hand">ชื่อผู้ว่าจ้าง:</label>
-                          <input
-                            type="text"
-                            value={clientName}
-                            onChange={(e) => setClientName(e.target.value)}
-                            placeholder="เช่น สมชาย, voyade"
-                            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold mb-1 font-hand">ลิงก์แชทคุยงาน / ID แชท Fastwork:</label>
-                          <input
-                            type="text"
-                            value={clientChatUrl}
-                            onChange={(e) => handleChatUrlChange(e.target.value)}
-                            placeholder="วางลิงก์ หรือพิมพ์แค่ ID เช่น rr43tfs, 123456"
-                            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold mb-1 font-hand">ความคืบหน้าของงาน (0 - 100%):</label>
-                          <div className="flex items-center gap-2 mt-2">
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              value={smmThaiDone}
-                              onChange={(e) => setSmmThaiDone(e.target.value)}
-                              className="flex-grow accent-pencil"
-                            />
-                            <span className="font-hand font-extrabold text-sm w-12 text-right">{smmThaiDone}%</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    /* 🎨 GENERAL / DEV TEMPLATE FIELDS */
+                    renderGeneralFields()
                   )}
 
                   {/* Financial Summary Information & Date */}
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold mb-1 font-hand">รายได้ (ราคาขาย):</label>
-                      <input
-                        type="number"
-                        value={price}
-                        onChange={(e) => setPrice(e.target.value)}
-                        className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                      />
+                  {jobCategory === 'fastwork_smm' ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold mb-1 font-hand">รายได้ (ราคาขาย):</label>
+                        <input
+                          type="number"
+                          value={price}
+                          onChange={(e) => setPrice(e.target.value)}
+                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold mb-1 font-hand">ต้นทุน (ค่าใช้จ่าย):</label>
+                        <input
+                          type="number"
+                          value={cost}
+                          onChange={(e) => setCost(e.target.value)}
+                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold mb-1 font-hand">สถานะงาน:</label>
+                        <CustomSelect
+                          value={jobStatus}
+                          onChange={(val) => setJobStatus(val)}
+                          options={[
+                            { value: 'ยังไม่เริ่ม', label: '💤 ยังไม่เริ่ม (รอคิว)' },
+                            { value: 'กำลังดำเนินการ', label: '⚡ กำลังดำเนินการ (กำลังทำ)' },
+                            { value: 'เสร็จสิ้น', label: '✓ เสร็จสิ้น (เสร็จแล้ว)' },
+                            { value: 'เสร็จสิ้นปิดงานแล้ว', label: '📁 เสร็จสิ้นปิดงานแล้ว' }
+                          ]}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold mb-1 font-hand">วันที่เริ่มงาน:</label>
+                        <input
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold mb-1 font-hand">วันที่สิ้นสุดงาน (ถ้าเสร็จ):</label>
+                        <input
+                          type="date"
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-bold mb-1 font-hand">ต้นทุน (ค่าใช้จ่าย):</label>
-                      <input
-                        type="number"
-                        value={cost}
-                        onChange={(e) => setCost(e.target.value)}
-                        className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                      />
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold mb-1 font-hand">สถานะโปรเจกต์:</label>
+                        <CustomSelect
+                          value={jobStatus}
+                          onChange={(val) => setJobStatus(val)}
+                          options={[
+                            { value: 'ยังไม่เริ่ม', label: '💤 ยังไม่เริ่ม (รอเริ่มงาน)' },
+                            { value: 'กำลังดำเนินการ', label: '⚡ กำลังดำเนินการ (กำลังพัฒนา)' },
+                            { value: 'เสร็จสิ้น', label: '✓ เสร็จสิ้น (ส่งมอบแล้ว)' },
+                            { value: 'เสร็จสิ้นปิดงานแล้ว', label: '📁 เสร็จสิ้นปิดงานแล้ว (ปิดโปรเจกต์)' }
+                          ]}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold mb-1 font-hand">วันที่เริ่มโปรเจกต์:</label>
+                        <input
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold mb-1 font-hand">วันที่ส่งมอบเสร็จสิ้น (ถ้าเสร็จ):</label>
+                        <input
+                          type="date"
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-bold mb-1 font-hand">สถานะงาน:</label>
-                      <CustomSelect
-                        value={jobStatus}
-                        onChange={(val) => setJobStatus(val)}
-                        options={[
-                          { value: 'ยังไม่เริ่ม', label: '💤 ยังไม่เริ่ม (รอคิว)' },
-                          { value: 'กำลังดำเนินการ', label: '⚡ กำลังดำเนินการ (กำลังทำ)' },
-                          { value: 'เสร็จสิ้น', label: '✓ เสร็จสิ้น (เสร็จแล้ว)' },
-                          { value: 'เสร็จสิ้นปิดงานแล้ว', label: '📁 เสร็จสิ้นปิดงานแล้ว' }
-                        ]}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold mb-1 font-hand">วันที่เริ่มงาน:</label>
-                      <input
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold mb-1 font-hand">วันที่สิ้นสุดงาน (ถ้าเสร็จ):</label>
-                      <input
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                      />
-                    </div>
-                  </div>
+                  )}
 
                   <div>
                     <label className="block text-xs font-bold mb-1 font-hand">หมายเหตุ / บันทึกเพิ่มเติม:</label>
@@ -2332,6 +2617,31 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                   <X className="w-4 h-4" />
                 </button>
               )}
+            </div>
+
+            {/* Category Filter Pills */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-b border-dashed border-pencil pb-2">
+              <span className="text-xs font-bold text-pencil-muted font-hand">หมวดหมู่งาน:</span>
+              <div className="flex items-center gap-1 bg-control/50 p-1 sketch-border-sm">
+                {[
+                  { id: 'all', label: '📁 งานทุกหมวด' },
+                  { id: 'fastwork_smm', label: '🚀 SMM / ปั๊มฟอล' },
+                  { id: 'other_freelance', label: '💻 งานพัฒนาเว็บ / โปรแกรมมิ่ง' }
+                ].map(cat => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setFilterJobCategory(cat.id as any)}
+                    className={`px-3 py-1 text-xs font-bold font-hand rounded transition-colors whitespace-nowrap ${
+                      filterJobCategory === cat.id
+                        ? 'bg-pencil text-paper shadow-sketch-sm'
+                        : 'text-pencil hover:bg-control/80'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
@@ -2695,6 +3005,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                             <span className="font-bold">💼 {job.platform || 'งานพัฒนา/ทั่วไป'}</span>
                             <span>ความคืบหน้า: {job.thai_done || 0}%</span>
                           </div>
+                          {renderDevSummary(job)}
                           
                           <div className="space-y-1">
                             <div className="w-full h-3 bg-neutral-200/50 sketch-border-sm overflow-hidden p-0.5">
@@ -2878,7 +3189,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                 ) : null}
                               </div>
                             ) : (
-                              <span className="text-pencil-muted text-xs">งานบริการ / ทั่วไป (ตามขอบเขต)</span>
+                              renderDevSummary(job)
                             )}
                           </td>
 
@@ -3409,7 +3720,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                     <div className="grid grid-cols-2 gap-2 bg-control/30 p-1 sketch-border-sm">
                       <button
                         type="button"
-                        onClick={() => setJobCategory('fastwork_smm')}
+                        onClick={() => switchJobCategory('fastwork_smm')}
                         className={`py-2 text-xs sm:text-sm font-extrabold font-hand rounded transition-all text-center ${
                           jobCategory === 'fastwork_smm' 
                             ? 'bg-amber-100 text-amber-900 border border-pencil shadow-sketch-sm' 
@@ -3420,7 +3731,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setJobCategory('other_freelance')}
+                        onClick={() => switchJobCategory('other_freelance')}
                         className={`py-2 text-xs sm:text-sm font-extrabold font-hand rounded transition-all text-center ${
                           jobCategory === 'other_freelance' 
                             ? 'bg-indigo-100 text-indigo-900 border border-pencil shadow-sketch-sm' 
@@ -3914,143 +4225,98 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                       </div>
                     </div>
                   ) : (
-                    /* 🎨 GENERAL FREELANCE TEMPLATE FIELDS */
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold mb-1 font-hand">ชื่องาน / ลูกค้า:</label>
-                          <input
-                            type="text"
-                            value={jobTitle}
-                            onChange={(e) => setJobTitle(e.target.value)}
-                            placeholder="เช่น พัฒนาเว็บ TRC, Dashboard ขายของ"
-                            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold mb-1 font-hand flex justify-between items-center">
-                            <span>ช่องทางรับงาน:</span>
-                            <button
-                              type="button"
-                              onClick={() => setShowChannelManage(true)}
-                              className="text-[10px] text-amber-600 hover:underline flex items-center gap-0.5 font-bold font-hand"
-                            >
-                              <Tag className="w-2.5 h-2.5" /> จัดการช่องทาง
-                            </button>
-                          </label>
-                          <CustomSelect
-                            value={selectedChannelId}
-                            onChange={(val) => setSelectedChannelId(val)}
-                            options={[
-                              { value: '', label: '-- ลูกค้าโดยตรง / อื่นๆ --' },
-                              ...channels.map((chan) => ({ value: chan.id, label: chan.name }))
-                            ]}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold mb-1 font-hand">ประเภทงาน / บริการ (เช่น เขียนโค้ด, แดชบอร์ด):</label>
-                          <input
-                            type="text"
-                            value={smmPlatform}
-                            onChange={(e) => setSmmPlatform(e.target.value)}
-                            placeholder="เช่น แดชบอร์ดระบบ, เขียนโปรแกรม Backend, งานดีไซน์"
-                            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold mb-1 font-hand">ชื่อผู้ว่าจ้าง:</label>
-                          <input
-                            type="text"
-                            value={clientName}
-                            onChange={(e) => setClientName(e.target.value)}
-                            placeholder="เช่น สมชาย, voyade"
-                            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold mb-1 font-hand">ลิงก์แชทคุยงาน / ID แชท Fastwork:</label>
-                          <input
-                            type="text"
-                            value={clientChatUrl}
-                            onChange={(e) => handleChatUrlChange(e.target.value)}
-                            placeholder="วางลิงก์ หรือพิมพ์แค่ ID เช่น rr43tfs, 123456"
-                            className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold mb-1 font-hand">ความคืบหน้าของงาน (0 - 100%):</label>
-                          <div className="flex items-center gap-2 mt-2">
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              value={smmThaiDone}
-                              onChange={(e) => setSmmThaiDone(e.target.value)}
-                              className="flex-grow accent-pencil"
-                            />
-                            <span className="font-hand font-extrabold text-sm w-12 text-right">{smmThaiDone}%</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    /* 🎨 GENERAL / DEV TEMPLATE FIELDS */
+                    renderGeneralFields()
                   )}
 
                   {/* Financial Summary Information & Date */}
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold mb-1 font-hand">รายได้ (ราคาขาย):</label>
-                      <input
-                        type="number"
-                        value={price}
-                        onChange={(e) => setPrice(e.target.value)}
-                        className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                      />
+                  {jobCategory === 'fastwork_smm' ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold mb-1 font-hand">รายได้ (ราคาขาย):</label>
+                        <input
+                          type="number"
+                          value={price}
+                          onChange={(e) => setPrice(e.target.value)}
+                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold mb-1 font-hand">ต้นทุน (ค่าใช้จ่าย):</label>
+                        <input
+                          type="number"
+                          value={cost}
+                          onChange={(e) => setCost(e.target.value)}
+                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold mb-1 font-hand">สถานะงาน:</label>
+                        <CustomSelect
+                          value={jobStatus}
+                          onChange={(val) => setJobStatus(val)}
+                          options={[
+                            { value: 'ยังไม่เริ่ม', label: '💤 ยังไม่เริ่ม (รอคิว)' },
+                            { value: 'กำลังดำเนินการ', label: '⚡ กำลังดำเนินการ (กำลังทำ)' },
+                            { value: 'เสร็จสิ้น', label: '✓ เสร็จสิ้น (เสร็จแล้ว)' },
+                            { value: 'เสร็จสิ้นปิดงานแล้ว', label: '📁 เสร็จสิ้นปิดงานแล้ว' }
+                          ]}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold mb-1 font-hand">วันที่เริ่มงาน:</label>
+                        <input
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold mb-1 font-hand">วันที่สิ้นสุดงาน (ถ้าเสร็จ):</label>
+                        <input
+                          type="date"
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-bold mb-1 font-hand">ต้นทุน (ค่าใช้จ่าย):</label>
-                      <input
-                        type="number"
-                        value={cost}
-                        onChange={(e) => setCost(e.target.value)}
-                        className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                      />
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold mb-1 font-hand">สถานะโปรเจกต์:</label>
+                        <CustomSelect
+                          value={jobStatus}
+                          onChange={(val) => setJobStatus(val)}
+                          options={[
+                            { value: 'ยังไม่เริ่ม', label: '💤 ยังไม่เริ่ม (รอเริ่มงาน)' },
+                            { value: 'กำลังดำเนินการ', label: '⚡ กำลังดำเนินการ (กำลังพัฒนา)' },
+                            { value: 'เสร็จสิ้น', label: '✓ เสร็จสิ้น (ส่งมอบแล้ว)' },
+                            { value: 'เสร็จสิ้นปิดงานแล้ว', label: '📁 เสร็จสิ้นปิดงานแล้ว (ปิดโปรเจกต์)' }
+                          ]}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold mb-1 font-hand">วันที่เริ่มโปรเจกต์:</label>
+                        <input
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold mb-1 font-hand">วันที่ส่งมอบเสร็จสิ้น (ถ้าเสร็จ):</label>
+                        <input
+                          type="date"
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-bold mb-1 font-hand">สถานะงาน:</label>
-                      <CustomSelect
-                        value={jobStatus}
-                        onChange={(val) => setJobStatus(val)}
-                        options={[
-                          { value: 'ยังไม่เริ่ม', label: '💤 ยังไม่เริ่ม (รอคิว)' },
-                          { value: 'กำลังดำเนินการ', label: '⚡ กำลังดำเนินการ (กำลังทำ)' },
-                          { value: 'เสร็จสิ้น', label: '✓ เสร็จสิ้น (เสร็จแล้ว)' },
-                          { value: 'เสร็จสิ้นปิดงานแล้ว', label: '📁 เสร็จสิ้นปิดงานแล้ว' }
-                        ]}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold mb-1 font-hand">วันที่เริ่มงาน:</label>
-                      <input
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold mb-1 font-hand">วันที่สิ้นสุดงาน (ถ้าเสร็จ):</label>
-                      <input
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
-                      />
-                    </div>
-                  </div>
+                  )}
 
                   <div>
                     <label className="block text-xs font-bold mb-1 font-hand">หมายเหตุ / บันทึกเพิ่มเติม:</label>
