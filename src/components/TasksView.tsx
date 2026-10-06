@@ -292,7 +292,27 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
   const [isMultiLink, setIsMultiLink] = useState(false);
   const [multiLinks, setMultiLinks] = useState<JobLinkItem[]>([]);
   const [fetchingStartCount, setFetchingStartCount] = useState(false);
-  const [expandedMultiLinkJobs, setExpandedMultiLinkJobs] = useState<Set<string>>(new Set());
+  const [collapsedMultiLinkJobs, setCollapsedMultiLinkJobs] = useState<Set<string>>(new Set());
+
+  // Helper: หารยอดรวมเท่าๆ กันให้ทุกลิงก์
+  const handleDistributeCountToLinks = (totalToAdd: number) => {
+    if (multiLinks.length === 0 || totalToAdd <= 0) return;
+    const countPerLink = Math.floor(totalToAdd / multiLinks.length);
+    const remainder = totalToAdd % multiLinks.length;
+    setMultiLinks(prev => prev.map((l, idx) => ({
+      ...l,
+      target_count: countPerLink + (idx === 0 ? remainder : 0)
+    })));
+  };
+
+  // Helper: ตั้งค่ายอดที่จะเพิ่มเท่ากันทุกช่อง
+  const handleSetSameCountToLinks = (countPerLink: number) => {
+    if (multiLinks.length === 0 || countPerLink <= 0) return;
+    setMultiLinks(prev => prev.map(l => ({
+      ...l,
+      target_count: countPerLink
+    })));
+  };
 
   // Toast notification state
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info'; id: number } | null>(null);
@@ -609,11 +629,25 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
       let finalStartCount = Number(smmStartCount) || 0;
       let finalTargetCount = Number(smmTargetCount) || 0;
       let finalNotes = jobNotes.trim();
+      let multiLinkTargetToAdd = 0;
 
       if (isMultiLink && multiLinks.length > 0) {
         finalStartCount = multiLinks.reduce((sum, l) => sum + (Number(l.start_count) || 0), 0);
-        finalTargetCount = multiLinks.reduce((sum, l) => sum + (Number(l.target_count) || 0), 0);
+        multiLinkTargetToAdd = multiLinks.reduce((sum, l) => sum + (Number(l.target_count) || 0), 0);
+        finalTargetCount = finalStartCount + multiLinkTargetToAdd;
         finalNotes = serializeJobLinks(jobNotes, multiLinks);
+      }
+
+      // Calculate Thai & Foreign target defaults if multi-link
+      let finalThaiAdded = (smmServiceType === 'ไทย' || smmServiceType === 'ผสม') ? (Number(smmThaiAdded) || 0) : 0;
+      let finalForeignAdded = (smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม') ? (Number(smmForeignAdded) || 0) : 0;
+      if (isMultiLink && multiLinkTargetToAdd > 0) {
+        if (smmServiceType === 'ไทย' && finalThaiAdded === 0) finalThaiAdded = multiLinkTargetToAdd;
+        if (smmServiceType === 'ต่างชาติ' && finalForeignAdded === 0) finalForeignAdded = multiLinkTargetToAdd;
+        if (smmServiceType === 'ผสม' && finalThaiAdded === 0 && finalForeignAdded === 0) {
+          finalThaiAdded = Math.floor(multiLinkTargetToAdd / 2);
+          finalForeignAdded = multiLinkTargetToAdd - finalThaiAdded;
+        }
       }
 
       const payload: any = {
@@ -630,16 +664,16 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
         notes: finalNotes || null,
         category: jobCategory,
         // SMM fields
-        link: smmLink.trim() || null,
+        link: smmLink.trim() || (isMultiLink && multiLinks[0]?.url ? multiLinks[0].url.trim() : null),
         account_name: smmAccountName.trim() || null,
         platform: smmPlatform || null,
         service_type: smmServiceType || null,
         start_count: finalStartCount,
         target_count: finalTargetCount,
-        foreign_added: (smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม') ? (Number(smmForeignAdded) || 0) : 0,
+        foreign_added: finalForeignAdded,
         foreign_gift: (smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม') ? (Number(smmForeignGift) || 0) : 0,
         foreign_done: (smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม') ? (Number(smmForeignDone) || 0) : 0,
-        thai_added: (smmServiceType === 'ไทย' || smmServiceType === 'ผสม') ? (Number(smmThaiAdded) || 0) : 0,
+        thai_added: finalThaiAdded,
         thai_gift: (smmServiceType === 'ไทย' || smmServiceType === 'ผสม') ? (Number(smmThaiGift) || 0) : 0,
         thai_done: (smmServiceType === 'ไทย' || smmServiceType === 'ผสม') ? (Number(smmThaiDone) || 0) : 0,
         provider_info: smmProviderInfo.trim() || null
@@ -701,11 +735,25 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
       let finalStartCount = Number(smmStartCount) || 0;
       let finalTargetCount = Number(smmTargetCount) || 0;
       let finalNotes = jobNotes.trim();
+      let multiLinkTargetToAdd = 0;
 
       if (isMultiLink && multiLinks.length > 0) {
         finalStartCount = multiLinks.reduce((sum, l) => sum + (Number(l.start_count) || 0), 0);
-        finalTargetCount = multiLinks.reduce((sum, l) => sum + (Number(l.target_count) || 0), 0);
+        multiLinkTargetToAdd = multiLinks.reduce((sum, l) => sum + (Number(l.target_count) || 0), 0);
+        finalTargetCount = finalStartCount + multiLinkTargetToAdd;
         finalNotes = serializeJobLinks(jobNotes, multiLinks);
+      }
+
+      // Calculate Thai & Foreign target defaults if multi-link
+      let finalThaiAdded = (smmServiceType === 'ไทย' || smmServiceType === 'ผสม') ? (Number(smmThaiAdded) || 0) : 0;
+      let finalForeignAdded = (smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม') ? (Number(smmForeignAdded) || 0) : 0;
+      if (isMultiLink && multiLinkTargetToAdd > 0) {
+        if (smmServiceType === 'ไทย' && finalThaiAdded === 0) finalThaiAdded = multiLinkTargetToAdd;
+        if (smmServiceType === 'ต่างชาติ' && finalForeignAdded === 0) finalForeignAdded = multiLinkTargetToAdd;
+        if (smmServiceType === 'ผสม' && finalThaiAdded === 0 && finalForeignAdded === 0) {
+          finalThaiAdded = Math.floor(multiLinkTargetToAdd / 2);
+          finalForeignAdded = multiLinkTargetToAdd - finalThaiAdded;
+        }
       }
 
       const payload: any = {
@@ -721,16 +769,16 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
         notes: finalNotes || null,
         category: jobCategory,
         // SMM fields
-        link: smmLink.trim() || null,
+        link: smmLink.trim() || (isMultiLink && multiLinks[0]?.url ? multiLinks[0].url.trim() : null),
         account_name: smmAccountName.trim() || null,
         platform: smmPlatform || null,
         service_type: smmServiceType || null,
         start_count: finalStartCount,
         target_count: finalTargetCount,
-        foreign_added: (smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม') ? (Number(smmForeignAdded) || 0) : 0,
+        foreign_added: finalForeignAdded,
         foreign_gift: (smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม') ? (Number(smmForeignGift) || 0) : 0,
         foreign_done: (smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม') ? (Number(smmForeignDone) || 0) : 0,
-        thai_added: (smmServiceType === 'ไทย' || smmServiceType === 'ผสม') ? (Number(smmThaiAdded) || 0) : 0,
+        thai_added: finalThaiAdded,
         thai_gift: (smmServiceType === 'ไทย' || smmServiceType === 'ผสม') ? (Number(smmThaiGift) || 0) : 0,
         thai_done: (smmServiceType === 'ไทย' || smmServiceType === 'ผสม') ? (Number(smmThaiDone) || 0) : 0,
         provider_info: smmProviderInfo.trim() || null
@@ -986,6 +1034,12 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
       updateData.thai_done = totalDone;
     } else if (job.service_type === 'ต่างชาติ') {
       updateData.foreign_done = totalDone;
+    } else if (job.service_type === 'ผสม') {
+      const targetForeign = (Number(job.foreign_added) || 0) + (Number(job.foreign_gift) || 0);
+      const foreignDone = Math.min(targetForeign, totalDone);
+      const thaiDone = Math.max(0, totalDone - foreignDone);
+      updateData.foreign_done = foreignDone;
+      updateData.thai_done = thaiDone;
     } else {
       updateData.thai_done = totalDone;
     }
@@ -1033,6 +1087,12 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
       updateData.thai_done = totalDone;
     } else if (job.service_type === 'ต่างชาติ') {
       updateData.foreign_done = totalDone;
+    } else if (job.service_type === 'ผสม') {
+      const targetForeign = (Number(job.foreign_added) || 0) + (Number(job.foreign_gift) || 0);
+      const foreignDone = Math.min(targetForeign, totalDone);
+      const thaiDone = Math.max(0, totalDone - foreignDone);
+      updateData.foreign_done = foreignDone;
+      updateData.thai_done = thaiDone;
     } else {
       updateData.thai_done = totalDone;
     }
@@ -1153,12 +1213,24 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
     fetchJobs();
   }, [userId]);
 
-  // Auto-calculate SMM Target Count (Start + Added counts)
+  // Auto-calculate SMM Target Count & Start Count (from MultiLinks or Single link)
   useEffect(() => {
     if (isMultiLink && multiLinks.length > 0) {
       const sumStart = multiLinks.reduce((s, l) => s + (Number(l.start_count) || 0), 0);
       const sumTarget = multiLinks.reduce((s, l) => s + (Number(l.target_count) || 0), 0);
+      setSmmStartCount(String(sumStart));
       setSmmTargetCount(String(sumStart + sumTarget));
+
+      // Auto populate Thai / Foreign added targets if currently empty
+      if (smmServiceType === 'ไทย' && !smmThaiAdded && sumTarget > 0) {
+        setSmmThaiAdded(String(sumTarget));
+      } else if (smmServiceType === 'ต่างชาติ' && !smmForeignAdded && sumTarget > 0) {
+        setSmmForeignAdded(String(sumTarget));
+      } else if (smmServiceType === 'ผสม' && !smmThaiAdded && !smmForeignAdded && sumTarget > 0) {
+        const half = Math.floor(sumTarget / 2);
+        setSmmThaiAdded(String(half));
+        setSmmForeignAdded(String(sumTarget - half));
+      }
     } else {
       const start = Number(smmStartCount) || 0;
       const isThai = smmServiceType === 'ไทย' || smmServiceType === 'ผสม';
@@ -2053,24 +2125,82 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                           </div>
                         ) : (
                           /* Multi-Link Mode List */
-                          <div className="space-y-3 bg-control/40 p-3 rounded-lg border-2 border-dashed border-indigo-300 dark:border-indigo-700">
-                            <span className="text-xs font-bold text-indigo-900 dark:text-indigo-300 font-hand block">
-                              🔗 รายการลิงก์โพสต์ในงานนี้ ({multiLinks.length} ลิงก์):
-                            </span>
+                          <div className="space-y-3 bg-paper p-3.5 rounded-lg border-2 border-dashed border-pencil shadow-sketch-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-dashed border-pencil pb-2">
+                              <div>
+                                <span className="text-xs font-extrabold text-pencil font-hand flex items-center gap-1.5">
+                                  <Layers className="w-4 h-4 text-amber-600" />
+                                  รายการลิงก์โพสต์ในงานนี้ ({multiLinks.length} ลิงก์):
+                                </span>
+                                <span className="text-[10px] text-pencil-muted font-hand block">
+                                  ยอดเพิ่มรวม: +{multiLinks.reduce((s, l) => s + (Number(l.target_count) || 0), 0).toLocaleString()} (จบรวมที่ {multiLinks.reduce((s, l) => s + (Number(l.start_count) || 0) + (Number(l.target_count) || 0), 0).toLocaleString()})
+                                </span>
+                              </div>
+
+                              {/* เครื่องมือกำหนดและกระจายยอด */}
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const total = (smmServiceType === 'ผสม' 
+                                      ? (Number(smmThaiAdded) || 0) + (Number(smmForeignAdded) || 0)
+                                      : smmServiceType === 'ต่างชาติ' 
+                                        ? (Number(smmForeignAdded) || 0) 
+                                        : (Number(smmThaiAdded) || 0)) || 300;
+                                    const promptVal = window.prompt(`ระบุยอดรวมที่ต้องการหารเฉลี่ยให้ (${multiLinks.length} ลิงก์):`, String(total > 0 ? total : 300));
+                                    if (promptVal && Number(promptVal) > 0) {
+                                      handleDistributeCountToLinks(Number(promptVal));
+                                    }
+                                  }}
+                                  className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-1 shadow-sketch-sm transition-transform active:scale-95"
+                                  title="เช่น มี 3 ลิงก์ ยอดรวม 300 จะหารได้ลิงก์ละ 100 เท่ากันอัตโนมัติ"
+                                >
+                                  <span>➗ หารยอดรวมเท่าๆ กัน</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const promptVal = window.prompt(`ระบุจำนวนที่ต้องการใส่ให้ทุกลิงก์ (ต่อลิงก์):`, '100');
+                                    if (promptVal && Number(promptVal) > 0) {
+                                      handleSetSameCountToLinks(Number(promptVal));
+                                    }
+                                  }}
+                                  className="px-2 py-1 bg-sky-50 hover:bg-sky-100 text-sky-900 border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-1 shadow-sketch-sm transition-transform active:scale-95"
+                                  title="ใส่ตัวเลขยอดที่จะเพิ่มเท่านี้ให้ทุกลิงก์พร้อมกัน"
+                                >
+                                  <span>📋 ใส่ยอดเท่านี้ทุกลิงก์</span>
+                                </button>
+                              </div>
+                            </div>
                             
-                            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                            <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
                               {multiLinks.map((item, idx) => (
-                                <div key={item.id} className="p-2.5 bg-paper rounded-md border-2 border-pencil text-xs space-y-2 shadow-sketch-sm">
+                                <div key={item.id} className="p-2.5 bg-control/40 rounded-md border-2 border-pencil text-xs space-y-2 shadow-sketch-sm">
                                   <div className="flex items-center justify-between gap-2">
-                                    <span className="font-extrabold font-hand text-pencil">โพสต์ #{idx + 1}:</span>
+                                    <span className="font-extrabold font-hand text-pencil flex items-center gap-1">
+                                      <span className="w-5 h-5 rounded-full bg-paper border border-pencil flex items-center justify-center text-[10px]">#{idx + 1}</span>
+                                      โพสต์ที่ {idx + 1}:
+                                    </span>
                                     <div className="flex items-center gap-1">
                                       {item.url && (
                                         <>
                                           <button
                                             type="button"
+                                            onClick={() => {
+                                              navigator.clipboard.writeText(item.url);
+                                              showToast(`คัดลอกลิงก์โพสต์ #${idx + 1} แล้ว!`, 'success');
+                                            }}
+                                            className="px-1.5 py-0.5 bg-paper hover:bg-neutral-100 text-pencil border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-0.5 shadow-sketch-sm"
+                                            title="คัดลอกลิงก์นี้"
+                                          >
+                                            <Copy className="w-2.5 h-2.5" />
+                                            <span>คัดลอก</span>
+                                          </button>
+                                          <button
+                                            type="button"
                                             onClick={() => handleFetchStartCount(item.url, idx)}
                                             className="px-2 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-0.5 shadow-sketch-sm"
-                                            title="ดึงยอดเริ่มของลิงก์นี้"
+                                            title="ดึงยอดเริ่มของลิงก์นี้จากระบบอัตโนมัติ"
                                           >
                                             🔍 ดึงเริ่ม
                                           </button>
@@ -2087,6 +2217,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                               setOcrModalOpen(true);
                                             }}
                                             className="px-2 py-0.5 bg-sky-100 hover:bg-sky-200 text-sky-900 border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-0.5 shadow-sketch-sm"
+                                            title="สแกนยอดเริ่มต้นจากรูปแคป"
                                           >
                                             📸 สแกน
                                           </button>
@@ -2094,7 +2225,8 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                             href={getAppDeepLink(item.url)}
                                             target="_blank"
                                             rel="noreferrer"
-                                            className="px-2 py-0.5 bg-neutral-200 hover:bg-neutral-300 text-neutral-800 border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-0.5 shadow-sketch-sm"
+                                            className="px-2 py-0.5 bg-paper hover:bg-neutral-100 text-pencil border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-0.5 shadow-sketch-sm"
+                                            title="เปิดดูโพสต์"
                                           >
                                             🚀 เปิด
                                           </a>
@@ -2117,8 +2249,9 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                     </div>
                                   </div>
 
-                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                    <div className="sm:col-span-2">
+                                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                                    <div className="sm:col-span-6">
+                                      <label className="block text-[10px] font-bold text-pencil-muted font-hand mb-0.5">ลิงก์โพสต์/วิดีโอ:</label>
                                       <input
                                         type="url"
                                         value={item.url}
@@ -2126,35 +2259,37 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                           const val = e.target.value;
                                           setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, url: val } : l));
                                         }}
-                                        placeholder="วางลิงก์โพสต์..."
-                                        className="w-full p-2 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                        placeholder="วางลิงก์โพสต์ IG, TikTok, FB..."
+                                        className="w-full p-1.5 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
                                       />
                                     </div>
-                                    <div className="flex gap-2">
-                                      <div className="w-1/2">
-                                        <input
-                                          type="number"
-                                          value={item.start_count || ''}
-                                          onChange={(e) => {
-                                            const val = Number(e.target.value) || 0;
-                                            setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, start_count: val } : l));
-                                          }}
-                                          placeholder="ยอดเริ่ม"
-                                          className="w-full p-2 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand text-center placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
-                                        />
-                                      </div>
-                                      <div className="w-1/2">
-                                        <input
-                                          type="number"
-                                          value={item.target_count || ''}
-                                          onChange={(e) => {
-                                            const val = Number(e.target.value) || 0;
-                                            setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, target_count: val } : l));
-                                          }}
-                                          placeholder="เป้าหมาย"
-                                          className="w-full p-2 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand font-bold text-center text-amber-700 dark:text-amber-400 placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
-                                        />
-                                      </div>
+                                    <div className="sm:col-span-3">
+                                      <label className="block text-[10px] font-bold text-pencil-muted font-hand mb-0.5">ยอดเริ่มต้นเดิม:</label>
+                                      <input
+                                        type="number"
+                                        value={item.start_count || ''}
+                                        onChange={(e) => {
+                                          const val = Number(e.target.value) || 0;
+                                          setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, start_count: val } : l));
+                                        }}
+                                        placeholder="ยอดเริ่ม เช่น 1"
+                                        className="w-full p-1.5 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand text-center placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                      />
+                                    </div>
+                                    <div className="sm:col-span-3">
+                                      <label className="block text-[10px] font-bold text-amber-700 dark:text-amber-400 font-hand mb-0.5">
+                                        จำนวนที่จะเพิ่ม: <span className="text-[9px] text-pencil-muted font-normal">(จบ: {(Number(item.start_count) || 0) + (Number(item.target_count) || 0)})</span>
+                                      </label>
+                                      <input
+                                        type="number"
+                                        value={item.target_count || ''}
+                                        onChange={(e) => {
+                                          const val = Number(e.target.value) || 0;
+                                          setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, target_count: val } : l));
+                                        }}
+                                        placeholder="เช่น 100"
+                                        className="w-full p-1.5 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand font-bold text-center text-amber-700 dark:text-amber-400 placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                      />
                                     </div>
                                   </div>
                                 </div>
@@ -2169,9 +2304,9 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                   { id: Math.random().toString(36).substring(2, 9), url: '', start_count: 0, target_count: 100, current_count: 0, done: 0, status: 'pending' }
                                 ]);
                               }}
-                              className="w-full py-2 bg-paper border-2 border-dashed border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 rounded-md font-hand font-bold text-xs flex items-center justify-center gap-1 transition-colors shadow-sketch-sm"
+                              className="w-full py-2 bg-paper border-2 border-dashed border-pencil hover:bg-amber-50 text-pencil rounded-md font-hand font-bold text-xs flex items-center justify-center gap-1 transition-colors shadow-sketch-sm"
                             >
-                              <Plus className="w-3.5 h-3.5" /> เพิ่มลิงก์โพสต์ถัดไป
+                              <Plus className="w-3.5 h-3.5 text-amber-600" /> เพิ่มลิงก์โพสต์ถัดไป
                             </button>
                           </div>
                         )}
@@ -2289,12 +2424,16 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-bold mb-1 font-hand">ยอดเริ่มต้นเดิม:</label>
+                            <label className="block text-xs font-bold mb-1 font-hand flex items-center justify-between">
+                              <span>ยอดเริ่มต้นเดิม:</span>
+                              {isMultiLink && <span className="text-[10px] text-amber-700 font-bold">รวม {multiLinks.length} ลิงก์</span>}
+                            </label>
                             <input
                               type="number"
                               value={smmStartCount}
                               onChange={(e) => setSmmStartCount(e.target.value)}
-                              className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                              readOnly={isMultiLink}
+                              className={`w-full p-2 border-2 border-pencil rounded-md text-sm font-hand ${isMultiLink ? 'bg-control/60 text-pencil cursor-not-allowed font-bold' : 'bg-transparent'}`}
                             />
                           </div>
                           <div>
@@ -2303,8 +2442,13 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                               type="number"
                               value={smmTargetCount}
                               readOnly
-                              className="w-full p-2 bg-neutral-100/50 dark:bg-neutral-800/50 border-2 border-pencil rounded-md text-sm font-hand font-extrabold cursor-not-allowed text-pencil-muted"
+                              className="w-full p-2 bg-control/60 border-2 border-pencil rounded-md text-sm font-hand font-extrabold cursor-not-allowed text-pencil"
                             />
+                            {isMultiLink && (
+                              <span className="text-[9px] text-pencil-muted font-hand block mt-0.5">
+                                รวมเริ่ม {smmStartCount || 0} + เพิ่ม {multiLinks.reduce((s, l) => s + (Number(l.target_count) || 0), 0)}
+                              </span>
+                            )}
                           </div>
                           <div>
                             <label className="block text-xs font-bold mb-1 font-hand">ลิงก์ฝั่งสั่งซื้อ (SMM):</label>
@@ -2317,6 +2461,28 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                             />
                           </div>
                         </div>
+
+                        {/* Quick 50/50 splitter for Mixed Service in Multi-Link */}
+                        {smmServiceType === 'ผสม' && isMultiLink && (
+                          <div className="flex flex-wrap items-center justify-between gap-1 p-2 bg-amber-50/70 rounded border border-amber-300 text-xs font-hand">
+                            <span className="font-bold text-pencil text-[11px]">
+                              🔄 งานผสมหลายลิงก์ (เป้าหมายที่จะเพิ่มรวม: +{multiLinks.reduce((s, l) => s + (Number(l.target_count) || 0), 0)})
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const sumTarget = multiLinks.reduce((s, l) => s + (Number(l.target_count) || 0), 0);
+                                const half = Math.floor(sumTarget / 2);
+                                setSmmThaiAdded(String(half));
+                                setSmmForeignAdded(String(sumTarget - half));
+                                showToast(`แบ่งยอด 50/50 เรียบร้อย (ไทย ${half}, ต่างชาติ ${sumTarget - half})`, 'success');
+                              }}
+                              className="px-2 py-0.5 bg-paper hover:bg-amber-100 text-pencil border border-pencil rounded font-bold text-[10px] shadow-sketch-sm transition-transform active:scale-95"
+                            >
+                              ⚡ แบ่งครึ่ง 50/50 (ไทย / ต่างชาติ)
+                            </button>
+                          </div>
+                        )}
 
                         {/* Foreign details fields */}
                         {(smmServiceType === 'ต่างชาติ' || smmServiceType === 'ผสม') && (
@@ -2444,13 +2610,18 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold mb-1 font-hand">วันที่สิ้นสุดงาน (ถ้าเสร็จ):</label>
+                        <label className="block text-xs font-bold mb-1 font-hand">กำหนดส่ง:</label>
                         <input
                           type="date"
                           value={endDate}
                           onChange={(e) => setEndDate(e.target.value)}
                           className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
                         />
+                      </div>
+                      <div className="col-span-2 sm:col-span-5 -mt-2">
+                        <span className="text-[10px] text-pencil-muted font-hand">
+                          💡 หมายเหตุ: ใส่ยอดราคาและต้นทุนรวมของทั้งออเดอร์/ทุกลิงก์ได้เลย ระบบจะคำนวณกำไรภาพรวมให้อัตโนมัติ
+                        </span>
                       </div>
                     </div>
                   ) : (
@@ -2804,12 +2975,12 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                       {isSMM && (() => {
                         const jobLinks = parseJobLinks(job.notes);
                         const hasMultiLinks = jobLinks && jobLinks.length > 0;
-                        const isExpanded = expandedMultiLinkJobs.has(job.id);
+                        const isExpanded = !collapsedMultiLinkJobs.has(job.id);
 
                         return (
-                          <div className="p-3 bg-control/40 sketch-border-sm space-y-2 text-xs">
+                          <div className="p-3 bg-control/40 sketch-border-sm space-y-2.5 text-xs">
                             <div className="flex justify-between items-center font-hand text-[10px] text-pencil-muted">
-                              <span>🚀 {job.platform || 'ig : ฟอล'} ({job.service_type || 'ผสม'})</span>
+                              <span className="font-bold text-pencil">🚀 {job.platform || 'ig : ฟอล'} ({job.service_type || 'ผสม'})</span>
                               <span>เดิม: {job.start_count?.toLocaleString()} ➔ เป้าหมาย: {calculations.totalTargetFollowers?.toLocaleString()}</span>
                             </div>
 
@@ -2817,9 +2988,9 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                             <div className="space-y-1">
                               <div className="flex justify-between font-hand text-[10px]">
                                 <span>ความคืบหน้าภาพรวม (+{calculations.totalDone} จากเป้า +{calculations.totalTargetToAdd})</span>
-                                <span className="font-bold">{calculations.progressPercent}%</span>
+                                <span className="font-extrabold">{calculations.progressPercent}%</span>
                               </div>
-                              <div className="w-full h-3 bg-neutral-200/50 sketch-border-sm overflow-hidden p-0.5">
+                              <div className="w-full h-3 bg-control sketch-border-sm overflow-hidden p-0.5">
                                 <div 
                                   className="h-full bg-amber-400 rounded-sm sketch-border-sm transition-all duration-300"
                                   style={{ width: `${calculations.progressPercent}%` }}
@@ -2853,7 +3024,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                           }
                                         }
                                       }}
-                                      className="w-16 px-1 py-0.5 text-center bg-transparent border border-pencil rounded text-[10px] font-extrabold focus:bg-control"
+                                      className="w-16 px-1 py-0.5 text-center bg-paper border border-pencil rounded text-[10px] font-extrabold focus:bg-control"
                                       disabled={fetchingJobIds.has(job.id)}
                                     />
                                     {job.link && (
@@ -2878,18 +3049,24 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                   </div>
                                 </div>
                               ) : (
-                                /* Multi-Link Section */
+                                /* Multi-Link Section (Upgraded Sketch View) */
                                 <div className="space-y-2 pt-1">
-                                  <div className="flex items-center justify-between bg-indigo-50/60 dark:bg-indigo-950/40 p-1.5 rounded border border-indigo-200 dark:border-indigo-900">
-                                    <span className="font-hand font-bold text-[10px] text-indigo-900 dark:text-indigo-300 flex items-center gap-1">
-                                      <Layers className="w-3 h-3" /> งาน {jobLinks.length} ลิงก์
-                                    </span>
+                                  <div className="flex flex-wrap items-center justify-between gap-1.5 bg-paper p-2 rounded-md border-2 border-pencil shadow-sketch-sm">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-hand font-extrabold text-xs text-pencil flex items-center gap-1">
+                                        <Layers className="w-3.5 h-3.5 text-amber-600" /> งาน {jobLinks.length} ลิงก์
+                                      </span>
+                                      <span className="px-1.5 py-0.2 bg-amber-100 text-amber-900 border border-pencil rounded font-hand font-bold text-[10px]">
+                                        +{calculations.totalDone} / +{calculations.totalTargetToAdd} ({calculations.progressPercent}%)
+                                      </span>
+                                    </div>
                                     <div className="flex items-center gap-1">
                                       <button
                                         type="button"
                                         onClick={() => handleBatchFetchMultiLinks(job)}
                                         disabled={fetchingJobIds.has(job.id)}
-                                        className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-hand text-[9px] font-bold shadow-sketch-sm flex items-center gap-0.5"
+                                        className="px-2 py-0.5 bg-pencil hover:bg-neutral-800 text-white rounded font-hand text-[10px] font-bold shadow-sketch-sm flex items-center gap-1 disabled:opacity-50"
+                                        title="ดึงยอดทุกโพสต์พร้อมกันจาก API"
                                       >
                                         {fetchingJobIds.has(job.id) ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RefreshCw className="w-2.5 h-2.5" />}
                                         <span>⚡ ดึงทุกลิงก์</span>
@@ -2897,14 +3074,27 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                       <button
                                         type="button"
                                         onClick={() => {
-                                          setExpandedMultiLinkJobs(prev => {
+                                          const allUrls = jobLinks.map((l: any, i: number) => `${i + 1}. ${l.url}`).join('\n');
+                                          navigator.clipboard.writeText(allUrls);
+                                          showToast(`คัดลอกทุกลิงก์ (${jobLinks.length} ลิงก์) เรียบร้อย!`, 'success');
+                                        }}
+                                        className="px-1.5 py-0.5 bg-paper hover:bg-control border-2 border-pencil rounded font-hand text-[10px] font-bold text-pencil flex items-center gap-0.5 shadow-sketch-sm"
+                                        title="คัดลอกลิงก์ทั้งหมดพร้อมกัน"
+                                      >
+                                        <Copy className="w-2.5 h-2.5" />
+                                        <span>ก๊อปทั้งหมด</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setCollapsedMultiLinkJobs(prev => {
                                             const next = new Set(prev);
                                             if (next.has(job.id)) next.delete(job.id);
                                             else next.add(job.id);
                                             return next;
                                           });
                                         }}
-                                        className="px-1.5 py-0.5 bg-white dark:bg-neutral-800 border border-pencil rounded font-hand text-[9px] font-bold"
+                                        className="px-1.5 py-0.5 bg-paper hover:bg-control border-2 border-pencil rounded font-hand text-[10px] font-bold text-pencil shadow-sketch-sm"
                                       >
                                         {isExpanded ? 'ย่อ ▲' : 'ดูทุกลิงก์ ▼'}
                                       </button>
@@ -2912,64 +3102,134 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                   </div>
 
                                   {isExpanded && (
-                                    <div className="space-y-1.5 max-h-48 overflow-y-auto pl-1 pr-1">
-                                      {jobLinks.map((sub, sIdx) => (
-                                        <div key={sub.id} className="p-1.5 bg-white/80 dark:bg-neutral-900/80 rounded border border-neutral-300 dark:border-neutral-700 text-[10px] space-y-1 font-hand">
-                                          <div className="flex items-center justify-between">
-                                            <span className="font-bold text-pencil">#{sIdx + 1}: {sub.done}/{sub.target_count} ({Math.min(100, Math.round(((sub.done || 0) / (sub.target_count || 1)) * 100))}%)</span>
-                                            <div className="flex items-center gap-1">
-                                              {sub.url && (
-                                                <>
-                                                  <button
-                                                    type="button"
-                                                    onClick={() => handleAutoFetchCount(job.id, sub.url, sub.id)}
-                                                    disabled={fetchingJobIds.has(`${job.id}-${sub.id}`)}
-                                                    className="px-1.5 py-0.2 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded font-bold text-[9px]"
-                                                  >
-                                                    {fetchingJobIds.has(`${job.id}-${sub.id}`) ? '...' : '🤖 ดึง'}
-                                                  </button>
-                                                  <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                      setOcrModalConfig({
-                                                        title: `สแกนรูปโพสต์ #${sIdx + 1}`,
-                                                        fieldLabel: 'ยอดปัจจุบันที่ตรวจพบ',
-                                                        onConfirm: (cnt) => {
-                                                          handleUpdateMultiLinkCount(job.id, sub.id, cnt);
-                                                        }
-                                                      });
-                                                      setOcrModalOpen(true);
-                                                    }}
-                                                    className="px-1.5 py-0.2 bg-sky-100 hover:bg-sky-200 text-sky-900 rounded font-bold text-[9px]"
-                                                  >
-                                                    📸
-                                                  </button>
-                                                  <a
-                                                    href={getAppDeepLink(sub.url)}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className="px-1.5 py-0.2 bg-neutral-200 text-neutral-800 rounded font-bold text-[9px]"
-                                                  >
-                                                    🚀
-                                                  </a>
-                                                </>
-                                              )}
+                                    <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                                      {jobLinks.map((sub: any, sIdx: number) => {
+                                        const subDone = Number(sub.done) || 0;
+                                        const subTarget = Number(sub.target_count) || 0;
+                                        const subStart = Number(sub.start_count) || 0;
+                                        const subCurrent = sub.current_count || (subStart + subDone);
+                                        const subPercent = subTarget > 0 ? Math.min(100, Math.round((subDone / subTarget) * 100)) : (subDone > 0 ? 100 : 0);
+                                        const isDone = subDone >= subTarget && subTarget > 0;
+
+                                        return (
+                                          <div key={sub.id} className="p-2 bg-paper rounded-md border-2 border-pencil text-xs space-y-1.5 font-hand shadow-sketch-sm">
+                                            <div className="flex items-center justify-between gap-1">
+                                              <div className="flex items-center gap-1.5 min-w-0">
+                                                <span className="font-extrabold text-pencil whitespace-nowrap">
+                                                  #{sIdx + 1}
+                                                </span>
+                                                {sub.url ? (
+                                                  <span className="text-[10px] text-pencil-muted truncate max-w-[130px] sm:max-w-[200px]" title={sub.url}>
+                                                    {sub.url.replace(/^https?:\/\/(www\.)?/, '')}
+                                                  </span>
+                                                ) : (
+                                                  <span className="text-[10px] text-red-500 italic">ยังไม่ใส่ลิงก์</span>
+                                                )}
+                                                {isDone && (
+                                                  <span className="px-1 py-0.2 bg-emerald-100 text-emerald-800 border border-emerald-400 rounded text-[9px] font-bold">
+                                                    ✓ เสร็จ
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <div className="flex items-center gap-1 flex-shrink-0">
+                                                {sub.url && (
+                                                  <>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                        navigator.clipboard.writeText(sub.url);
+                                                        showToast(`คัดลอกลิงก์โพสต์ #${sIdx + 1} แล้ว!`, 'success');
+                                                      }}
+                                                      className="p-1 bg-paper hover:bg-neutral-100 text-pencil border border-pencil rounded text-[10px] font-bold shadow-sketch-sm"
+                                                      title="คัดลอกลิงก์โพสต์นี้"
+                                                    >
+                                                      <Copy className="w-3 h-3" />
+                                                    </button>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleAutoFetchCount(job.id, sub.url, sub.id)}
+                                                      disabled={fetchingJobIds.has(`${job.id}-${sub.id}`)}
+                                                      className="px-1.5 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-pencil rounded font-bold text-[10px] flex items-center gap-0.5 shadow-sketch-sm disabled:opacity-50"
+                                                      title="ดึงยอดของลิงก์นี้จาก API"
+                                                    >
+                                                      {fetchingJobIds.has(`${job.id}-${sub.id}`) ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <span>🤖 ดึง</span>}
+                                                    </button>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                        setOcrModalConfig({
+                                                          title: `สแกนรูปโพสต์ #${sIdx + 1}`,
+                                                          fieldLabel: 'ยอดปัจจุบันที่ตรวจพบ',
+                                                          onConfirm: (cnt) => {
+                                                            handleUpdateMultiLinkCount(job.id, sub.id, cnt);
+                                                          }
+                                                        });
+                                                        setOcrModalOpen(true);
+                                                      }}
+                                                      className="p-1 bg-sky-100 hover:bg-sky-200 text-sky-900 border border-pencil rounded font-bold text-[10px] shadow-sketch-sm"
+                                                      title="สแกนยอดจากภาพแคปหน้าจอ"
+                                                    >
+                                                      <Camera className="w-3 h-3" />
+                                                    </button>
+                                                    <a
+                                                      href={getAppDeepLink(sub.url)}
+                                                      target="_blank"
+                                                      rel="noreferrer"
+                                                      className="p-1 bg-paper hover:bg-neutral-100 text-pencil border border-pencil rounded font-bold text-[10px] shadow-sketch-sm"
+                                                      title="เปิดดูโพสต์"
+                                                    >
+                                                      <ExternalLink className="w-3 h-3" />
+                                                    </a>
+                                                  </>
+                                                )}
+                                              </div>
+                                            </div>
+
+                                            {/* Individual Progress Bar */}
+                                            <div className="space-y-0.5">
+                                              <div className="flex justify-between items-center text-[10px]">
+                                                <span className="text-pencil-muted">
+                                                  เริ่ม: <span className="font-bold text-pencil">{subStart}</span> ➔ เป้า: <span className="font-bold text-amber-700">{subStart + subTarget}</span>
+                                                </span>
+                                                <span className="font-extrabold text-pencil">
+                                                  +{subDone} / +{subTarget} ({subPercent}%)
+                                                </span>
+                                              </div>
+                                              <div className="w-full h-1.5 bg-control rounded-full border border-pencil overflow-hidden">
+                                                <div 
+                                                  className={`h-full transition-all duration-300 ${isDone ? 'bg-emerald-500' : 'bg-amber-400'}`}
+                                                  style={{ width: `${subPercent}%` }}
+                                                />
+                                              </div>
+                                            </div>
+
+                                            {/* Manual update input */}
+                                            <div className="flex items-center justify-between text-[10px] pt-0.5">
+                                              <span className="text-pencil-muted font-bold">ปรับยอดจริงปัจจุบัน:</span>
+                                              <div className="flex items-center gap-1">
+                                                <input
+                                                  type="number"
+                                                  defaultValue={subCurrent}
+                                                  onBlur={(e) => {
+                                                    const val = Number(e.target.value);
+                                                    if (val > 0) handleUpdateMultiLinkCount(job.id, sub.id, val);
+                                                  }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      const val = Number((e.target as HTMLInputElement).value);
+                                                      if (val > 0) {
+                                                        handleUpdateMultiLinkCount(job.id, sub.id, val);
+                                                        (e.target as HTMLInputElement).blur();
+                                                      }
+                                                    }
+                                                  }}
+                                                  className="w-16 px-1.5 py-0.5 border border-pencil rounded bg-paper text-pencil font-bold text-center text-[10px] focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                                />
+                                              </div>
                                             </div>
                                           </div>
-                                          <div className="flex items-center gap-1">
-                                            <span className="text-pencil-muted">เริ่ม: {sub.start_count} ➔ ตอนนี้:</span>
-                                            <input
-                                              type="number"
-                                              defaultValue={sub.current_count || (Number(sub.start_count) + Number(sub.done))}
-                                              onBlur={(e) => {
-                                                const val = Number(e.target.value);
-                                                if (val > 0) handleUpdateMultiLinkCount(job.id, sub.id, val);
-                                              }}
-                                              className="w-14 px-1 py-0.2 border border-pencil rounded bg-transparent font-bold text-center text-[9px]"
-                                            />
-                                          </div>
-                                        </div>
-                                      ))}
+                                        );
+                                      })}
                                     </div>
                                   )}
                                 </div>
@@ -3272,20 +3532,119 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                     );
                                   }
 
+                                  const isCollapsed = collapsedMultiLinkJobs.has(job.id);
                                   return (
-                                    <div className="flex items-center justify-between gap-1 mt-1.5 bg-indigo-50/50 p-1 rounded border border-indigo-200">
-                                      <span className="text-[10px] font-bold text-indigo-900 font-hand">
-                                        🔗 {jobLinks.length} ลิงก์
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleBatchFetchMultiLinks(job)}
-                                        disabled={fetchingJobIds.has(job.id)}
-                                        className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-hand text-[9px] font-bold flex items-center gap-0.5 shadow-xs"
-                                      >
-                                        {fetchingJobIds.has(job.id) ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RefreshCw className="w-2.5 h-2.5" />}
-                                        <span>⚡ ดึงทุกลิงก์</span>
-                                      </button>
+                                    <div className="mt-1.5 space-y-1">
+                                      <div className="flex items-center justify-between gap-1 bg-amber-50/70 p-1 rounded border border-amber-300">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setCollapsedMultiLinkJobs(prev => {
+                                              const next = new Set(prev);
+                                              if (next.has(job.id)) next.delete(job.id);
+                                              else next.add(job.id);
+                                              return next;
+                                            });
+                                          }}
+                                          className="text-[10px] font-bold text-pencil font-hand flex items-center gap-1 hover:text-amber-800"
+                                          title="คลิกเพื่อพับ/ขยายดูแต่ละลิงก์"
+                                        >
+                                          <span>🔗 {jobLinks.length} ลิงก์</span>
+                                          <span className="text-[9px] text-pencil-muted">{isCollapsed ? '▼ ดู' : '▲ ซ่อน'}</span>
+                                        </button>
+                                        <div className="flex items-center gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const allUrls = jobLinks.map(l => l.url).filter(Boolean).join('\n');
+                                              navigator.clipboard.writeText(allUrls);
+                                              showToast(`คัดลอกทุกลิงก์ (${jobLinks.length} ลิงก์) แล้ว`, 'success');
+                                            }}
+                                            className="p-1 hover:bg-paper rounded text-pencil-muted hover:text-pencil text-[9px] font-bold border border-transparent hover:border-pencil"
+                                            title="คัดลอก URL ทุกลิงก์"
+                                          >
+                                            <Copy className="w-2.5 h-2.5" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleBatchFetchMultiLinks(job)}
+                                            disabled={fetchingJobIds.has(job.id)}
+                                            className="px-1.5 py-0.5 bg-paper hover:bg-amber-100 text-pencil border border-pencil rounded font-hand text-[9px] font-bold flex items-center gap-0.5 shadow-sketch-sm"
+                                            title="ดึงยอดอัตโนมัติทุกลิงก์พร้อมกัน"
+                                          >
+                                            {fetchingJobIds.has(job.id) ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RefreshCw className="w-2.5 h-2.5" />}
+                                            <span>ดึงทั้งหมด</span>
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {!isCollapsed && (
+                                        <div className="space-y-1 bg-paper/60 p-1.5 rounded border border-dashed border-pencil text-[10px] font-hand max-h-48 overflow-y-auto">
+                                          {jobLinks.map((linkItem, idx) => {
+                                            const lStart = Number(linkItem.start_count) || 0;
+                                            const lTargetAdd = Number(linkItem.target_count) || 0;
+                                            const lGoal = lStart + lTargetAdd;
+                                            const lCurrent = Number(linkItem.current_count) || lStart;
+                                            const lAdded = Math.max(0, lCurrent - lStart);
+                                            const lPct = lTargetAdd > 0 ? Math.min(100, Math.round((lAdded / lTargetAdd) * 100)) : 100;
+                                            const isLinkFetching = fetchingJobIds.has(`${job.id}-${linkItem.id}`);
+
+                                            return (
+                                              <div key={linkItem.id || idx} className="p-1 bg-control/30 rounded border border-pencil/30 space-y-1">
+                                                <div className="flex items-center justify-between gap-1">
+                                                  <span className="font-bold text-[9px] text-pencil">#{idx + 1}</span>
+                                                  <span className="text-[9px] text-pencil-muted font-bold truncate max-w-[100px]" title={linkItem.url}>
+                                                    {linkItem.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 15)}...
+                                                  </span>
+                                                  <div className="flex items-center gap-0.5">
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                        navigator.clipboard.writeText(linkItem.url);
+                                                        showToast(`คัดลอกลิงก์ #${idx + 1} แล้ว`, 'success');
+                                                      }}
+                                                      className="p-0.5 hover:bg-paper rounded text-pencil-muted hover:text-pencil"
+                                                      title="คัดลอกลิงก์นี้"
+                                                    >
+                                                      <Copy className="w-2.5 h-2.5" />
+                                                    </button>
+                                                    {linkItem.url && (
+                                                      <a
+                                                        href={linkItem.url}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="p-0.5 hover:bg-paper rounded text-pencil-muted hover:text-pencil"
+                                                        title="เปิดลิงก์ในแท็บใหม่"
+                                                      >
+                                                        <ExternalLink className="w-2.5 h-2.5" />
+                                                      </a>
+                                                    )}
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleAutoFetchCount(job.id, linkItem.url, linkItem.id)}
+                                                      disabled={isLinkFetching}
+                                                      className="p-0.5 px-1 bg-paper hover:bg-amber-100 text-pencil border border-pencil rounded text-[8px] font-bold"
+                                                      title="ดึงยอดเฉพาะลิงก์นี้"
+                                                    >
+                                                      {isLinkFetching ? <Loader2 className="w-2 h-2 animate-spin" /> : 'ดึง'}
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                                <div className="flex items-center justify-between text-[8px] text-pencil-muted">
+                                                  <span>เดิม {lStart} → เป้า {lGoal} (+{lTargetAdd})</span>
+                                                  <span className="font-bold text-pencil">{lPct}% ({lCurrent})</span>
+                                                </div>
+                                                <div className="w-full h-1 bg-pencil/15 rounded-full overflow-hidden">
+                                                  <div
+                                                    className={`h-full transition-all duration-300 ${lPct >= 100 ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                                                    style={{ width: `${lPct}%` }}
+                                                  />
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
                                     </div>
                                   );
                                 })()}
@@ -3847,24 +4206,82 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                           </div>
                         ) : (
                           /* Multi-Link Mode List */
-                          <div className="space-y-3 bg-control/40 p-3 rounded-lg border-2 border-dashed border-indigo-300 dark:border-indigo-700">
-                            <span className="text-xs font-bold text-indigo-900 dark:text-indigo-300 font-hand block">
-                              🔗 รายการลิงก์โพสต์ในงานนี้ ({multiLinks.length} ลิงก์):
-                            </span>
+                          <div className="space-y-3 bg-paper p-3.5 rounded-lg border-2 border-dashed border-pencil shadow-sketch-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-dashed border-pencil pb-2">
+                              <div>
+                                <span className="text-xs font-extrabold text-pencil font-hand flex items-center gap-1.5">
+                                  <Layers className="w-4 h-4 text-amber-600" />
+                                  รายการลิงก์โพสต์ในงานนี้ ({multiLinks.length} ลิงก์):
+                                </span>
+                                <span className="text-[10px] text-pencil-muted font-hand block">
+                                  ยอดเพิ่มรวม: +{multiLinks.reduce((s, l) => s + (Number(l.target_count) || 0), 0).toLocaleString()} (จบรวมที่ {multiLinks.reduce((s, l) => s + (Number(l.start_count) || 0) + (Number(l.target_count) || 0), 0).toLocaleString()})
+                                </span>
+                              </div>
+
+                              {/* เครื่องมือกำหนดและกระจายยอด */}
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const total = (smmServiceType === 'ผสม' 
+                                      ? (Number(smmThaiAdded) || 0) + (Number(smmForeignAdded) || 0)
+                                      : smmServiceType === 'ต่างชาติ' 
+                                        ? (Number(smmForeignAdded) || 0) 
+                                        : (Number(smmThaiAdded) || 0)) || 300;
+                                    const promptVal = window.prompt(`ระบุยอดรวมที่ต้องการหารเฉลี่ยให้ (${multiLinks.length} ลิงก์):`, String(total > 0 ? total : 300));
+                                    if (promptVal && Number(promptVal) > 0) {
+                                      handleDistributeCountToLinks(Number(promptVal));
+                                    }
+                                  }}
+                                  className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-1 shadow-sketch-sm transition-transform active:scale-95"
+                                  title="เช่น มี 3 ลิงก์ ยอดรวม 300 จะหารได้ลิงก์ละ 100 เท่ากันอัตโนมัติ"
+                                >
+                                  <span>➗ หารยอดรวมเท่าๆ กัน</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const promptVal = window.prompt(`ระบุจำนวนที่ต้องการใส่ให้ทุกลิงก์ (ต่อลิงก์):`, '100');
+                                    if (promptVal && Number(promptVal) > 0) {
+                                      handleSetSameCountToLinks(Number(promptVal));
+                                    }
+                                  }}
+                                  className="px-2 py-1 bg-sky-50 hover:bg-sky-100 text-sky-900 border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-1 shadow-sketch-sm transition-transform active:scale-95"
+                                  title="ใส่ตัวเลขยอดที่จะเพิ่มเท่านี้ให้ทุกลิงก์พร้อมกัน"
+                                >
+                                  <span>📋 ใส่ยอดเท่านี้ทุกลิงก์</span>
+                                </button>
+                              </div>
+                            </div>
                             
-                            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                            <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
                               {multiLinks.map((item, idx) => (
-                                <div key={item.id} className="p-2.5 bg-paper rounded-md border-2 border-pencil text-xs space-y-2 shadow-sketch-sm">
+                                <div key={item.id} className="p-2.5 bg-control/40 rounded-md border-2 border-pencil text-xs space-y-2 shadow-sketch-sm">
                                   <div className="flex items-center justify-between gap-2">
-                                    <span className="font-extrabold font-hand text-pencil">โพสต์ #{idx + 1}:</span>
+                                    <span className="font-extrabold font-hand text-pencil flex items-center gap-1">
+                                      <span className="w-5 h-5 rounded-full bg-paper border border-pencil flex items-center justify-center text-[10px]">#{idx + 1}</span>
+                                      โพสต์ที่ {idx + 1}:
+                                    </span>
                                     <div className="flex items-center gap-1">
                                       {item.url && (
                                         <>
                                           <button
                                             type="button"
+                                            onClick={() => {
+                                              navigator.clipboard.writeText(item.url);
+                                              showToast(`คัดลอกลิงก์โพสต์ #${idx + 1} แล้ว!`, 'success');
+                                            }}
+                                            className="px-1.5 py-0.5 bg-paper hover:bg-neutral-100 text-pencil border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-0.5 shadow-sketch-sm"
+                                            title="คัดลอกลิงก์นี้"
+                                          >
+                                            <Copy className="w-2.5 h-2.5" />
+                                            <span>คัดลอก</span>
+                                          </button>
+                                          <button
+                                            type="button"
                                             onClick={() => handleFetchStartCount(item.url, idx)}
                                             className="px-2 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-0.5 shadow-sketch-sm"
-                                            title="ดึงยอดเริ่มของลิงก์นี้"
+                                            title="ดึงยอดเริ่มของลิงก์นี้จากระบบอัตโนมัติ"
                                           >
                                             🔍 ดึงเริ่ม
                                           </button>
@@ -3881,6 +4298,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                               setOcrModalOpen(true);
                                             }}
                                             className="px-2 py-0.5 bg-sky-100 hover:bg-sky-200 text-sky-900 border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-0.5 shadow-sketch-sm"
+                                            title="สแกนยอดเริ่มต้นจากรูปแคป"
                                           >
                                             📸 สแกน
                                           </button>
@@ -3888,7 +4306,8 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                             href={getAppDeepLink(item.url)}
                                             target="_blank"
                                             rel="noreferrer"
-                                            className="px-2 py-0.5 bg-neutral-200 hover:bg-neutral-300 text-neutral-800 border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-0.5 shadow-sketch-sm"
+                                            className="px-2 py-0.5 bg-paper hover:bg-neutral-100 text-pencil border border-pencil rounded font-hand font-bold text-[10px] flex items-center gap-0.5 shadow-sketch-sm"
+                                            title="เปิดดูโพสต์"
                                           >
                                             🚀 เปิด
                                           </a>
@@ -3911,8 +4330,9 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                     </div>
                                   </div>
 
-                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                    <div className="sm:col-span-2">
+                                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                                    <div className="sm:col-span-6">
+                                      <label className="block text-[10px] font-bold text-pencil-muted font-hand mb-0.5">ลิงก์โพสต์/วิดีโอ:</label>
                                       <input
                                         type="url"
                                         value={item.url}
@@ -3920,35 +4340,37 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                           const val = e.target.value;
                                           setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, url: val } : l));
                                         }}
-                                        placeholder="วางลิงก์โพสต์..."
-                                        className="w-full p-2 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                        placeholder="วางลิงก์โพสต์ IG, TikTok, FB..."
+                                        className="w-full p-1.5 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
                                       />
                                     </div>
-                                    <div className="flex gap-2">
-                                      <div className="w-1/2">
-                                        <input
-                                          type="number"
-                                          value={item.start_count || ''}
-                                          onChange={(e) => {
-                                            const val = Number(e.target.value) || 0;
-                                            setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, start_count: val } : l));
-                                          }}
-                                          placeholder="ยอดเริ่ม"
-                                          className="w-full p-2 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand text-center placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
-                                        />
-                                      </div>
-                                      <div className="w-1/2">
-                                        <input
-                                          type="number"
-                                          value={item.target_count || ''}
-                                          onChange={(e) => {
-                                            const val = Number(e.target.value) || 0;
-                                            setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, target_count: val } : l));
-                                          }}
-                                          placeholder="เป้าหมาย"
-                                          className="w-full p-2 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand font-bold text-center text-amber-700 dark:text-amber-400 placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
-                                        />
-                                      </div>
+                                    <div className="sm:col-span-3">
+                                      <label className="block text-[10px] font-bold text-pencil-muted font-hand mb-0.5">ยอดเริ่มต้นเดิม:</label>
+                                      <input
+                                        type="number"
+                                        value={item.start_count || ''}
+                                        onChange={(e) => {
+                                          const val = Number(e.target.value) || 0;
+                                          setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, start_count: val } : l));
+                                        }}
+                                        placeholder="ยอดเริ่ม เช่น 1"
+                                        className="w-full p-1.5 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand text-center placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                      />
+                                    </div>
+                                    <div className="sm:col-span-3">
+                                      <label className="block text-[10px] font-bold text-amber-700 dark:text-amber-400 font-hand mb-0.5">
+                                        จำนวนที่จะเพิ่ม: <span className="text-[9px] text-pencil-muted font-normal">(จบ: {(Number(item.start_count) || 0) + (Number(item.target_count) || 0)})</span>
+                                      </label>
+                                      <input
+                                        type="number"
+                                        value={item.target_count || ''}
+                                        onChange={(e) => {
+                                          const val = Number(e.target.value) || 0;
+                                          setMultiLinks(prev => prev.map((l, i) => i === idx ? { ...l, target_count: val } : l));
+                                        }}
+                                        placeholder="เช่น 100"
+                                        className="w-full p-1.5 bg-paper text-pencil border-2 border-pencil rounded-md text-xs font-hand font-bold text-center text-amber-700 dark:text-amber-400 placeholder:text-pencil-muted focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                      />
                                     </div>
                                   </div>
                                 </div>
@@ -3963,9 +4385,9 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                                   { id: Math.random().toString(36).substring(2, 9), url: '', start_count: 0, target_count: 100, current_count: 0, done: 0, status: 'pending' }
                                 ]);
                               }}
-                              className="w-full py-2 bg-paper border-2 border-dashed border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 rounded-md font-hand font-bold text-xs flex items-center justify-center gap-1 transition-colors shadow-sketch-sm"
+                              className="w-full py-2 bg-paper border-2 border-dashed border-pencil hover:bg-amber-50 text-pencil rounded-md font-hand font-bold text-xs flex items-center justify-center gap-1 transition-colors shadow-sketch-sm"
                             >
-                              <Plus className="w-3.5 h-3.5" /> เพิ่มลิงก์โพสต์ถัดไป
+                              <Plus className="w-3.5 h-3.5 text-amber-600" /> เพิ่มลิงก์โพสต์ถัดไป
                             </button>
                           </div>
                         )}
@@ -4083,12 +4505,16 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-bold mb-1 font-hand">ยอดเริ่มต้นเดิม:</label>
+                            <label className="block text-xs font-bold mb-1 font-hand flex items-center justify-between">
+                              <span>ยอดเริ่มต้นเดิม:</span>
+                              {isMultiLink && <span className="text-[10px] text-amber-700 font-bold">รวม {multiLinks.length} ลิงก์</span>}
+                            </label>
                             <input
                               type="number"
                               value={smmStartCount}
                               onChange={(e) => setSmmStartCount(e.target.value)}
-                              className="w-full p-2 bg-transparent border-2 border-pencil rounded-md text-sm font-hand"
+                              readOnly={isMultiLink}
+                              className={`w-full p-2 border-2 border-pencil rounded-md text-sm font-hand ${isMultiLink ? 'bg-control/60 text-pencil cursor-not-allowed font-bold' : 'bg-transparent'}`}
                             />
                           </div>
                           <div>
@@ -4097,8 +4523,13 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                               type="number"
                               value={smmTargetCount}
                               readOnly
-                              className="w-full p-2 bg-neutral-100/50 dark:bg-neutral-800/50 border-2 border-pencil rounded-md text-sm font-hand font-extrabold cursor-not-allowed text-pencil-muted"
+                              className="w-full p-2 bg-control/60 border-2 border-pencil rounded-md text-sm font-hand font-extrabold cursor-not-allowed text-pencil"
                             />
+                            {isMultiLink && (
+                              <span className="text-[9px] text-pencil-muted font-hand block mt-0.5">
+                                รวมเริ่ม {smmStartCount || 0} + เพิ่ม {multiLinks.reduce((s, l) => s + (Number(l.target_count) || 0), 0)}
+                              </span>
+                            )}
                           </div>
                           <div>
                             <label className="block text-xs font-bold mb-1 font-hand">ลิงก์ฝั่งสั่งซื้อ (SMM / ผู้รับงาน):</label>
@@ -4110,6 +4541,28 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
                             />
                           </div>
                         </div>
+
+                        {/* Quick 50/50 splitter for Mixed Service in Multi-Link */}
+                        {smmServiceType === 'ผสม' && isMultiLink && (
+                          <div className="flex flex-wrap items-center justify-between gap-1 p-2 bg-amber-50/70 rounded border border-amber-300 text-xs font-hand">
+                            <span className="font-bold text-pencil text-[11px]">
+                              🔄 งานผสมหลายลิงก์ (เป้าหมายที่จะเพิ่มรวม: +{multiLinks.reduce((s, l) => s + (Number(l.target_count) || 0), 0)})
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const sumTarget = multiLinks.reduce((s, l) => s + (Number(l.target_count) || 0), 0);
+                                const half = Math.floor(sumTarget / 2);
+                                setSmmThaiAdded(String(half));
+                                setSmmForeignAdded(String(sumTarget - half));
+                                showToast(`แบ่งยอด 50/50 เรียบร้อย (ไทย ${half}, ต่างชาติ ${sumTarget - half})`, 'success');
+                              }}
+                              className="px-2 py-0.5 bg-paper hover:bg-amber-100 text-pencil border border-pencil rounded font-bold text-[10px] shadow-sketch-sm transition-transform active:scale-95"
+                            >
+                              ➗ แบ่ง 50/50 ทันที (ไทย {Math.floor(multiLinks.reduce((s, l) => s + (Number(l.target_count) || 0), 0) / 2)} / ต่างชาติ {multiLinks.reduce((s, l) => s + (Number(l.target_count) || 0), 0) - Math.floor(multiLinks.reduce((s, l) => s + (Number(l.target_count) || 0), 0) / 2)})
+                            </button>
+                          </div>
+                        )}
 
                         {/* IG Current Count Calculator */}
                         <div className="bg-indigo-50/50 p-3 rounded border border-indigo-200 grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
