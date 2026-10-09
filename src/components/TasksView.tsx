@@ -1980,7 +1980,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
 
           {/* 🪟 Add Job Modal Popup */}
           {showAddJobForm && (
-            <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+            <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-50 flex items-start justify-center p-4 overflow-y-auto overscroll-none">
               <div className="bg-paper p-6 sketch-border shadow-sketch w-full max-w-3xl transform rotate-0.5 text-left space-y-4 my-8 max-h-[90vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-4 pb-2 border-b border-dashed border-pencil">
                   <h3 className="text-base md:text-lg font-extrabold font-hand flex items-center gap-2">
@@ -2694,7 +2694,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
 
           {/* 📊 Modal ตั้งค่า Google Sheets Webhook */}
           {showGSheetModal && (
-            <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+            <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-50 flex items-start justify-center p-4 overflow-y-auto overscroll-none">
               <div className="bg-paper p-6 sketch-border shadow-sketch w-full max-w-xl transform rotate-0.5 text-left space-y-4 my-8">
                 <div className="flex justify-between items-center border-b-2 border-dashed border-pencil pb-2">
                   <h3 className="text-lg font-extrabold font-hand flex items-center gap-2">
@@ -3748,7 +3748,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
 
           {/* 🏷️ Modal จัดการช่องทางรับงาน & บริการ SMM */}
           {showChannelManage && (
-            <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-50 flex items-start justify-center p-4 overflow-y-auto overscroll-none">
               <div className="bg-paper p-6 sketch-border shadow-sketch w-full max-w-2xl transform rotate-0.5 text-left space-y-4 max-h-[90vh] overflow-y-auto">
                 <div className="flex justify-between items-center border-b-2 border-dashed border-pencil pb-2">
                   <h3 className="text-lg font-extrabold font-hand flex items-center gap-2">
@@ -3939,7 +3939,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
 
           {/* ✨ Modal เพิ่มบริการ SMM ใหม่แบบด่วน (Quick Add Service Modal) */}
           {showAddServiceModal && (
-            <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-[60] flex items-start justify-center p-4 overflow-y-auto overscroll-none">
               <div className="bg-paper p-6 sketch-border shadow-sketch w-full max-w-md transform rotate-0.5 text-left space-y-4 animate-scale-up">
                 <div className="flex justify-between items-center border-b-2 border-dashed border-pencil pb-2">
                   <h3 className="text-lg font-extrabold font-hand flex items-center gap-2">
@@ -4058,7 +4058,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
 
           {/* 📝 Modal แก้ไขข้อมูลงานเสริม */}
           {editingJob && (
-            <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+            <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-50 flex items-start justify-center p-4 overflow-y-auto overscroll-none">
               <div className="bg-paper p-6 sketch-border shadow-sketch w-full max-w-3xl transform rotate-0.5 text-left space-y-4 my-8">
                 <div className="flex justify-between items-center border-b-2 border-dashed border-pencil pb-2">
                   <h3 className="text-lg font-extrabold font-hand flex items-center gap-2">
