@@ -2793,7 +2793,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
             {/* Category Filter Pills */}
             <div className="flex flex-wrap items-center gap-2 pt-1 border-b border-dashed border-pencil pb-2">
               <span className="text-xs font-bold text-pencil-muted font-hand">หมวดหมู่งาน:</span>
-              <div className="flex items-center gap-1 bg-control/50 p-1 sketch-border-sm">
+              <div className="flex items-center gap-1 bg-control/50 p-1 sketch-border-sm overflow-x-auto max-w-full w-full sm:w-auto">
                 {[
                   { id: 'all', label: '📁 งานทุกหมวด' },
                   { id: 'fastwork_smm', label: '🚀 SMM / ปั๊มฟอล' },
@@ -2817,7 +2817,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ userId }) => {
 
             <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
               {/* Status Tabs */}
-              <div className="flex items-center gap-1 bg-control p-1 sketch-border-sm overflow-x-auto max-w-full">
+              <div className="flex items-center gap-1 bg-control p-1 sketch-border-sm overflow-x-auto max-w-full w-full md:w-auto">
                 {[
                   { id: 'กำลังดำเนินการ', label: '⚡ กำลังทำ' },
                   { id: 'ยังไม่เริ่ม', label: '💤 รอคิว' },
